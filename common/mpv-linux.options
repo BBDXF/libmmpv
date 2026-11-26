@@ -1,0 +1,4 @@
+# Linux audio outputs (names verified in mpv meson.options)
+-Dalsa=enabled
+-Dpulse=enabled
+-Dpipewire=enabled

@@ -1,0 +1,3 @@
+# music: no video output backends at all
+-Dgl=disabled
+-Dplain-gl=disabled

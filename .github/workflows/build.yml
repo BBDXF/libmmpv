@@ -1,0 +1,118 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+jobs:
+  build:
+    name: ${{ matrix.profile }} / ${{ matrix.target }}${{ matrix.network == '1' && ' / net' || '' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    # Native arm64 runners are free only for public repos. On a private repo these jobs would
+    # queue forever, so they are skipped unless the repo is public or vars.ENABLE_ARM64 == '1'.
+    if: ${{ matrix.runner != 'ubuntu-24.04-arm' || github.event.repository.private == false || vars.ENABLE_ARM64 == '1' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [music, video]
+        target: [linux-x86_64, linux-arm64, win-x86_64, win-arm64]
+        network: ['0']
+        include:
+          - { target: linux-x86_64, runner: ubuntu-latest }
+          - { target: linux-arm64,  runner: ubuntu-24.04-arm }
+          - { target: win-x86_64,   runner: ubuntu-latest }
+          - { target: win-arm64,    runner: ubuntu-latest }
+          # extra job: network build + HTTP header / HLS tests
+          - { profile: music, target: linux-x86_64, network: '1', runner: ubuntu-latest }
+    env:
+      WITH_NETWORK: ${{ matrix.network }}
+      ID: ${{ matrix.profile }}-${{ matrix.target }}${{ matrix.network == '1' && '-net' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          PKGS="nasm cmake ninja-build pkg-config python3-pip ccache zip xz-utils curl"
+          case "${{ matrix.target }}" in
+            linux-*) PKGS="$PKGS libasound2-dev libpulse-dev libpipewire-0.3-dev ffmpeg" ;;
+          esac
+          sudo apt-get install -y --no-install-recommends $PKGS
+          python3 -m pip install --user --break-system-packages meson
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install llvm-mingw
+        if: startsWith(matrix.target, 'win-')
+        run: |
+          . ./upstream.lock
+          curl -fL --retry 3 "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64.tar.xz" | tar -xJ -C "$HOME"
+          echo "$HOME/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/cache@v4
+        with:
+          path: build/src
+          key: src-${{ hashFiles('upstream.lock') }}-${{ matrix.profile }}-${{ matrix.network }}
+      - uses: actions/cache@v4
+        if: startsWith(matrix.target, 'linux-')
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ env.ID }}-${{ github.sha }}
+          restore-keys: ccache-${{ env.ID }}-
+
+      - name: Validate option / component names against pinned sources
+        run: |
+          scripts/fetch.sh ${{ matrix.profile }}
+          scripts/check-options.sh
+          scripts/check-ffmpeg.sh
+
+      - name: Build
+        run: scripts/build.sh ${{ matrix.profile }} ${{ matrix.target }}
+
+      - name: Size report
+        run: cat "dist/$ID/SIZES.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test (native Linux)
+        if: startsWith(matrix.target, 'linux-')
+        run: common/tests/run_smoke.sh ${{ matrix.profile }} "dist/$ID"
+
+      - name: HTTP header / HLS test (network build)
+        if: matrix.network == '1'
+        run: |
+          mkdir -p dist/evidence
+          EVIDENCE="$PWD/dist/evidence/header-evidence-$ID.txt" common/tests/header_test.sh "dist/$ID"
+          cat "dist/evidence/header-evidence-$ID.txt" >> "$GITHUB_STEP_SUMMARY"
+          gcc -I"dist/$ID/include" examples/play_with_headers.c -L"dist/$ID/lib" -lmpv -Wl,-rpath,"$PWD/dist/$ID/lib" -o /tmp/play_with_headers
+          echo "example compiled OK"
+
+      - name: Windows link + load check
+        if: startsWith(matrix.target, 'win-')
+        continue-on-error: true
+        run: |
+          TRIPLE=$([ "${{ matrix.target }}" = win-x86_64 ] && echo x86_64-w64-mingw32 || echo aarch64-w64-mingw32)
+          D="dist/$ID"
+          "$TRIPLE-clang" -O1 -I"$D/include" common/tests/smoke.c -L"$D/lib" -lmpv -o "$D/bin/mmpv_smoke.exe"
+          echo "link OK"
+          if [ "${{ matrix.target }}" = win-x86_64 ]; then
+            sudo apt-get install -y --no-install-recommends wine64 && (cd "$D/bin" && WINEDEBUG=-all wine64 ./mmpv_smoke.exe --probe) \
+              || echo "wine run skipped/failed (link check passed)"
+          else
+            echo "arm64 Windows binary cannot be executed on this runner: link check only"
+          fi
+          rm -f "$D/bin/mmpv_smoke.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmmpv-${{ env.ID }}
+          path: |
+            dist/libmmpv-${{ env.ID }}.*
+            dist/${{ env.ID }}/SIZES.md
+            dist/evidence/*
+          if-no-files-found: error

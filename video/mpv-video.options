@@ -1,0 +1,4 @@
+# video: libmpv render API (OpenGL, embedder supplies the GL context) + SW render API.
+# plain-gl = OpenGL without platform specific context code.
+-Dgl=enabled
+-Dplain-gl=enabled

@@ -1,0 +1,31 @@
+name: upstream-watch
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Do our patches still apply to mpv/FFmpeg master?
+        id: rb
+        continue-on-error: true
+        run: |
+          . ./upstream.lock
+          mkdir -p build/src
+          git clone -q --depth 1 --branch "$LIBPLACEBO_TAG" "$LIBPLACEBO_URL" build/src/libplacebo
+          scripts/rebase.sh master master 2>&1 | tee rebase.log
+          exit "${PIPESTATUS[0]}"
+      - name: Open issue on failure
+        if: steps.rb.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="upstream-watch: patches/options no longer match mpv/FFmpeg master"
+          if [ -z "$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number')" ]; then
+            gh issue create --title "$title" --body "$(printf 'Weekly check failed.\n\n```\n%s\n```\nRun: %s/%s/actions/runs/%s' "$(tail -40 rebase.log)" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+          fi

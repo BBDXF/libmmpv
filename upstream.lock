@@ -1,0 +1,23 @@
+# Single source of truth for pinned upstream versions.
+# Tags verified to exist via `git ls-remote --tags` on 2026-11-26.
+MPV_URL=https://github.com/mpv-player/mpv.git
+MPV_TAG=v0.42.0
+
+FFMPEG_URL=https://github.com/FFmpeg/FFmpeg.git
+FFMPEG_TAG=n9.1
+
+# mpv v0.42.0 requires libplacebo >= 7.387.0 (meson.build) - it is a hard dependency,
+# we build it WITHOUT any GPU backend (see common/libplacebo.options).
+LIBPLACEBO_URL=https://code.videolan.org/videolan/libplacebo.git
+LIBPLACEBO_TAG=v7.387.0
+
+# video profile only (AV1 software decoder)
+DAV1D_URL=https://code.videolan.org/videolan/dav1d.git
+DAV1D_TAG=1.5.5
+
+# WITH_NETWORK=1 only (https). 3.6.x is the LTS branch, ships generated files in the tarball.
+MBEDTLS_VERSION=3.6.8
+MBEDTLS_URL=https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.8/mbedtls-3.6.8.tar.bz2
+
+# Windows cross toolchain (CI)
+LLVM_MINGW_VERSION=20261117

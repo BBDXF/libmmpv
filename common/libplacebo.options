@@ -1,0 +1,15 @@
+# libplacebo is a hard dependency of mpv >= 0.37, but we only need its
+# colour-space / utility code. Build it with NO graphics backend.
+# Names verified against libplacebo meson_options.txt (master 70c5059).
+-Dvulkan=disabled
+-Dopengl=disabled
+-Dd3d11=disabled
+-Dglslang=disabled
+-Dshaderc=disabled
+-Dlcms=disabled
+-Ddovi=disabled
+-Dlibdovi=disabled
+-Dunwind=disabled
+-Dxxhash=disabled
+-Ddemos=false
+-Dtests=false
