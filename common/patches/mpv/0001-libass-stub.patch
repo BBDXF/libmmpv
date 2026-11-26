@@ -1,24 +1,34 @@
 diff --git a/meson.build b/meson.build
-index b15f310..73617d7 100644
+index b15f310..728c4f4 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -30,7 +30,15 @@ libswscale = dependency('libswscale', version: '>= 7.5.100')
+@@ -30,7 +30,11 @@ libswscale = dependency('libswscale', version: '>= 7.5.100')
  libplacebo = dependency('libplacebo', version: '>=7.387.0',
                  default_options: ['default_library=static', 'demos=false'])
  
 -libass = dependency('libass', version: '>= 0.12.2')
 +# libmmpv: libass is replaced by a tiny API stub (no text rendering).
++# Only the include path is declared here; the stub library target itself is
++# defined right before libmpv (add_project_arguments() must precede targets).
++libass = declare_dependency(
++    include_directories: include_directories('third_party/libass-stub/include'))
+ 
+ # the dependency order of libass -> ffmpeg is necessary due to
+ # static linking symbol resolution between fontconfig and MinGW
+@@ -1838,6 +1842,13 @@ major = client_h_define.split('|')[0].split('<<')[0].strip('() ')
+ minor = client_h_define.split('|')[1].strip('() ')
+ client_api_version = major + '.' + minor + '.0'
+ 
 +libass_stub = static_library('ass-stub',
 +    'third_party/libass-stub/ass_stub.c',
 +    include_directories: include_directories('third_party/libass-stub/include'),
 +    pic: true,
 +    c_args: ['-fvisibility=hidden'])
-+libass = declare_dependency(
-+    link_with: libass_stub,
-+    include_directories: include_directories('third_party/libass-stub/include'))
- 
- # the dependency order of libass -> ffmpeg is necessary due to
- # static linking symbol resolution between fontconfig and MinGW
++dependencies += declare_dependency(link_with: libass_stub)
++
+ libmpv = library('mpv', sources, dependencies: dependencies, gnu_symbol_visibility: 'hidden',
+                  include_directories: incdir_public,
+                  link_args: cc.get_supported_link_arguments(['-Wl,-Bsymbolic']),
 diff --git a/third_party/libass-stub/LICENSE b/third_party/libass-stub/LICENSE
 new file mode 100644
 index 0000000..fe256ec
