@@ -5,6 +5,8 @@
 PROFILE=${1:?profile}; check_profile "$PROFILE"
 for proj in mpv ffmpeg libplacebo dav1d; do
   tree="$SRC_DIR/$proj"; [ -d "$tree/.git" ] || continue
+  # start from pristine upstream so patch changes never conflict with a cached, older-patched tree
+  git -C "$tree" checkout -q -- . && git -C "$tree" clean -fdq
   for dir in "$ROOT/common/patches/$proj" "$ROOT/$PROFILE/patches/$proj"; do
     [ -d "$dir" ] || continue
     for p in "$dir"/*.patch; do
