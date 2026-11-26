@@ -112,7 +112,7 @@ int main(int argc, char **argv)
     r = mpv_command(h, cmd);
     if (r < 0) fail_mpv("loadfile", r);
 
-    int rc_exit = 0, restarted = 0;
+    int rc_exit = 0, got_audio = 0, got_video = 0;
     time_t t0 = time(NULL);
     for (;;) {
         mpv_event *ev = mpv_wait_event(h, sw ? 0.01 : 0.5);
@@ -144,15 +144,17 @@ int main(int argc, char **argv)
             if (exp_a && (!ac || !strstr(ac, exp_a))) { fprintf(stderr, "FAIL: expected audio codec '%s'\n", exp_a); rc_exit = 1; }
             if (exp_v && (!vf || strcmp(vf, exp_v)))  { fprintf(stderr, "FAIL: expected video format '%s'\n", exp_v); rc_exit = 1; }
             mpv_free(ac); mpv_free(vf); mpv_free(d);
-        } else if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART && !restarted) {
-            restarted = 1;
+        } else if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART || ev->event_id == MPV_EVENT_AUDIO_RECONFIG
+                   || ev->event_id == MPV_EVENT_VIDEO_RECONFIG) {
             char *w = prop(h, "width"), *sr = prop(h, "audio-params/samplerate");
-            printf("first frame/samples decoded: width=%s samplerate=%s\n", w ? w : "-", sr ? sr : "-");
-            if (exp_v && (!w || atoi(w) <= 0)) { fprintf(stderr, "FAIL: no decoded video\n"); rc_exit = 1; }
-            if (exp_a && (!sr || atoi(sr) <= 0)) { fprintf(stderr, "FAIL: no decoded audio\n"); rc_exit = 1; }
+            if (w && atoi(w) > 0) got_video = 1;
+            if (sr && atoi(sr) > 0) got_audio = 1;
             mpv_free(w); mpv_free(sr);
         } else if (ev->event_id == MPV_EVENT_END_FILE) {
             mpv_event_end_file *e = ev->data;
+            printf("decoded: audio=%d video=%d\n", got_audio, got_video);
+            if (exp_v && !got_video) { fprintf(stderr, "FAIL: no decoded video\n"); rc_exit = 1; }
+            if (exp_a && !got_audio) { fprintf(stderr, "FAIL: no decoded audio\n"); rc_exit = 1; }
             if (e->reason != MPV_END_FILE_REASON_EOF) {
                 fprintf(stderr, "FAIL: end-file reason=%d error=%s\n", e->reason, mpv_error_string(e->error));
                 rc_exit = rc_exit ? rc_exit : 2;
