@@ -65,7 +65,31 @@ raw=$(stat -c %s "$LIB"); gz=$(gzip -9 -c "$LIB" | wc -c); rawu=$(stat -c %s "$O
     llvm-readobj --coff-exports "$LIB" 2>/dev/null | awk '/Name:/{print $2}' | grep -v '^mpv_' || echo "(none)"
   fi
   echo '```'
-  echo; echo "Exported mpv_ symbols: $("$NM" -D --defined-only "$LIB" 2>/dev/null | grep -c ' mpv_' || true)"
+  echo
+  if [ "$OS" = linux ]; then
+    echo "Exported mpv_ symbols: $("$NM" -D --defined-only "$LIB" 2>/dev/null | grep -c ' mpv_' || true)"
+  else
+    echo "Exported mpv_ symbols: $(llvm-readobj --coff-exports "$LIB" 2>/dev/null | grep -c 'Name: mpv_' || true)"
+    echo "Total exported symbols: $(llvm-readobj --coff-exports "$LIB" 2>/dev/null | grep -c 'Name: ' || true)"
+  fi
+  echo; echo '## Size breakdown of the unstripped library (heuristic: grouped by symbol-name prefix)'; echo '```'
+  "$NM" -S --defined-only -t d "$OUT/libmpv.unstripped" 2>/dev/null | awk '
+    NF>=4 { sz=$2+0; n=$4; g="other";
+      if (n ~ /^_?(ff_|av_|avcodec|avformat|avfilter|avutil|swr_|sws_|swscale|swresample|aac_|ac3_|h264|hevc|vp[89]|mpeg|flac|opus|vorbis|mp3|celt|silk|ogg|mov_|matroska|ebml)/) g="FFmpeg-like";
+      else if (n ~ /^_?(pl_|PL_)/) g="libplacebo";
+      else if (n ~ /^_?(dav1d|dav1d_)/) g="dav1d";
+      else if (n ~ /^_?(mbedtls|psa_|mbedtls_)/) g="mbedtls";
+      else if (n ~ /^_?(mp_|mpv_|m_|ao_|vo_|demux|stream_|sub_|osd_|sd_|ra_|gl_|cmd_|mpctx|talloc|ta_)/) g="mpv";
+      tot[g]+=sz; all+=sz }
+    END { for (g in tot) printf "%-14s %10d bytes  %5.1f%%\n", g, tot[g], 100*tot[g]/all; printf "%-14s %10d bytes (sum of sized symbols)\n","TOTAL",all }' | sort -k2 -nr
+  echo '```'
+  echo; echo '## Largest 15 symbols'; echo '```'
+  "$NM" -S --defined-only -t d "$OUT/libmpv.unstripped" 2>/dev/null | awk 'NF>=4{print $2+0, $4}' | sort -nr | head -15
+  echo '```'
+  echo; echo '## Sections'; echo '```'
+  if [ "$OS" = linux ]; then size -A "$OUT/libmpv.unstripped" | awk '$2>20000'; else llvm-size -A "$OUT/libmpv.unstripped" 2>/dev/null | awk '$2>20000'; fi
+  echo '```'
+
 } > "$OUT/SIZES.md"
 rm -f "$OUT/libmpv.unstripped"
 ( cd "$OUT" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS )

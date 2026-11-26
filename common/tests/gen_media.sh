@@ -13,10 +13,12 @@ F "${S[@]}" -c:a aac a.m4a
 F "${S[@]}" -c:a alac alac.m4a
 F "${S[@]}" -c:a aac -f adts a.aac
 F "${S[@]}" -c:a libopus a.mka
-F -f lavfi -i "color=c=red:s=128x128" -frames:v 1 cover.png
-F -f lavfi -i "color=c=blue:s=128x128" -frames:v 1 cover.jpg
-F -i a.mp3  -i cover.png -map 0:a -map 1 -c copy -id3v2_version 3 -disposition:v:0 attached_pic cover-png.mp3
-F -i a.flac -i cover.jpg -map 0:a -map 1 -c copy -disposition:v:0 attached_pic cover-jpg.flac
+# NOTE: images live in src/ - mpv's cover-art-auto would otherwise pick up cover.* next to the audio files
+mkdir -p src
+F -f lavfi -i "color=c=red:s=128x128" -frames:v 1 src/cover.png
+F -f lavfi -i "color=c=blue:s=128x128" -frames:v 1 src/cover.jpg
+F -i a.mp3  -i src/cover.png -map 0:a -map 1 -c copy -id3v2_version 3 -disposition:v:0 attached_pic cover-png.mp3
+F -i a.flac -i src/cover.jpg -map 0:a -map 1 -c copy -disposition:v:0 attached_pic cover-jpg.flac
 if [ "${2:-}" = video ]; then
   V=(-f lavfi -i "testsrc=size=320x240:rate=25:duration=2" "${S[@]}")
   F "${V[@]}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac v_h264.mp4

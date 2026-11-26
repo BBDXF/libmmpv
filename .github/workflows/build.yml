@@ -102,21 +102,20 @@ jobs:
           gcc -I"dist/$ID/include" examples/play_with_headers.c -L"dist/$ID/lib" -lmpv -Wl,-rpath,"$PWD/dist/$ID/lib" -o /tmp/play_with_headers
           echo "example compiled OK"
 
-      - name: Windows link + load check
+      - name: Cross-build the smoke-test program for Windows
         if: startsWith(matrix.target, 'win-')
-        continue-on-error: true
         run: |
           TRIPLE=$([ "${{ matrix.target }}" = win-x86_64 ] && echo x86_64-w64-mingw32 || echo aarch64-w64-mingw32)
-          D="dist/$ID"
-          "$TRIPLE-clang" -O1 -I"$D/include" common/tests/smoke.c -L"$D/lib" -lmpv -o "$D/bin/mmpv_smoke.exe"
-          echo "link OK"
-          if [ "${{ matrix.target }}" = win-x86_64 ]; then
-            sudo apt-get install -y --no-install-recommends wine64 && (cd "$D/bin" && WINEDEBUG=-all wine64 ./mmpv_smoke.exe --probe) \
-              || echo "wine run skipped/failed (link check passed)"
-          else
-            echo "arm64 Windows binary cannot be executed on this runner: link check only"
-          fi
-          rm -f "$D/bin/mmpv_smoke.exe"
+          D="dist/$ID"; mkdir -p dist/smoke
+          EXTRA=""; [ "${{ matrix.profile }}" = video ] && EXTRA="-DMMPV_SW_RENDER"
+          "$TRIPLE-clang" -O1 $EXTRA -I"$D/include" common/tests/smoke.c -L"$D/lib" -lmpv -o dist/smoke/mmpv_smoke.exe
+          ls -l dist/smoke
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(matrix.target, 'win-')
+        with:
+          name: smoke-${{ env.ID }}
+          path: dist/smoke/mmpv_smoke.exe
 
       - uses: actions/upload-artifact@v4
         with:
@@ -126,3 +125,58 @@ jobs:
             dist/${{ env.ID }}/SIZES.md
             dist/evidence/*
           if-no-files-found: error
+
+  media:
+    name: generate test media
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+          common/tests/gen_media.sh "$PWD/media" video
+      - uses: actions/upload-artifact@v4
+        with:
+          name: testmedia
+          path: media/
+          if-no-files-found: error
+
+  # Real Windows verification: load libmpv-2.dll on a Windows runner, decode, (video) SW-render.
+  winverify:
+    name: windows run / ${{ matrix.profile }} / ${{ matrix.arch }}
+    needs: [build, media]
+    runs-on: ${{ matrix.runner }}
+    # x86_64 is a hard gate. arm64 uses windows-11-arm; any environmental problem there is reported, not fatal.
+    continue-on-error: ${{ matrix.soft }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { profile: music, arch: x86_64, runner: windows-latest,  soft: false }
+          - { profile: video, arch: x86_64, runner: windows-latest,  soft: false }
+          - { profile: music, arch: arm64,  runner: windows-11-arm,  soft: true }
+          - { profile: video, arch: arm64,  runner: windows-11-arm,  soft: true }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: "libmmpv-${{ matrix.profile }}-win-${{ matrix.arch }}", path: pkg }
+      - uses: actions/download-artifact@v4
+        with: { name: "smoke-${{ matrix.profile }}-win-${{ matrix.arch }}", path: smoke }
+      - uses: actions/download-artifact@v4
+        with: { name: testmedia, path: media }
+      - name: Unpack
+        shell: pwsh
+        run: |
+          Expand-Archive pkg/libmmpv-${{ matrix.profile }}-win-${{ matrix.arch }}.zip -DestinationPath dist
+          Copy-Item smoke/mmpv_smoke.exe dist/${{ matrix.profile }}-win-${{ matrix.arch }}/bin/
+          Get-ChildItem dist/${{ matrix.profile }}-win-${{ matrix.arch }}/bin | Format-Table Name, Length
+          systeminfo | Select-String "OS Name","System Type"
+      - name: Probe (load DLL, mpv_create, mpv_initialize)
+        shell: bash
+        run: |
+          cd dist/${{ matrix.profile }}-win-${{ matrix.arch }}/bin && ./mmpv_smoke.exe --probe
+      - name: Decode tests
+        shell: bash
+        run: |
+          D="dist/${{ matrix.profile }}-win-${{ matrix.arch }}"
+          SMOKE_BIN="$PWD/$D/bin/mmpv_smoke.exe" MEDIA_DIR="$PWD/media" common/tests/run_smoke.sh ${{ matrix.profile }} "$D"

@@ -4,10 +4,12 @@
  *
  *   mmpv_smoke --probe
  *   mmpv_smoke FILE_OR_URL [-o key=val]... [-H "Header: v"]... [-P "Header: v"]
- *              [-A audio-codec-substring] [-V video-format] [--sw]
+ *              [-A audio-codec-substring] [-V video-format] [-C track-codec] [-N] [--sw]
  *
  * -H  global header list, set as MPV_FORMAT_NODE string array (before init)
  * -P  per-file header, passed via loadfile's options argument
+ * -V  expect video codec AND a decoded picture; -C expect a video(cover) track codec only;
+ * -N  expect NO video track at all
  * --sw  render frames with the software render API (needs -DMMPV_SW_RENDER)
  * Exit codes: 0 ok, 1 expectation failed, 2 mpv error, 3 timeout.
  */
@@ -33,8 +35,8 @@ static char *prop(mpv_handle *h, const char *name)
 
 int main(int argc, char **argv)
 {
-    const char *file = NULL, *exp_a = NULL, *exp_v = NULL, *perfile = NULL;
-    int probe = 0, sw = 0, nopts = 0, nh = 0;
+    const char *file = NULL, *exp_a = NULL, *exp_v = NULL, *perfile = NULL, *exp_c = NULL;
+    int probe = 0, sw = 0, novideo = 0, nopts = 0, nh = 0;
     const char *opts[64];
     char *hdrs[32];
 
@@ -46,6 +48,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "-P") && i + 1 < argc) perfile = argv[++i];
         else if (!strcmp(argv[i], "-A") && i + 1 < argc) exp_a = argv[++i];
         else if (!strcmp(argv[i], "-V") && i + 1 < argc) exp_v = argv[++i];
+        else if (!strcmp(argv[i], "-C") && i + 1 < argc) exp_c = argv[++i];
+        else if (!strcmp(argv[i], "-N")) novideo = 1;
         else if (argv[i][0] != '-' && !file) file = argv[i];
         else { fprintf(stderr, "bad argument: %s\n", argv[i]); return 2; }
     }
@@ -142,6 +146,8 @@ int main(int argc, char **argv)
             printf("loaded: audio-codec=%s video-format=%s duration=%s\n",
                    ac ? ac : "-", vf ? vf : "-", d ? d : "-");
             if (exp_a && (!ac || !strstr(ac, exp_a))) { fprintf(stderr, "FAIL: expected audio codec '%s'\n", exp_a); rc_exit = 1; }
+            if (novideo && vf) { fprintf(stderr, "FAIL: expected no video track, got '%s'\n", vf); rc_exit = 1; }
+            if (exp_c && (!vf || strcmp(vf, exp_c))) { fprintf(stderr, "FAIL: expected cover/video track '%s', got '%s'\n", exp_c, vf ? vf : "-"); rc_exit = 1; }
             if (exp_v && (!vf || strcmp(vf, exp_v)))  { fprintf(stderr, "FAIL: expected video format '%s'\n", exp_v); rc_exit = 1; }
             mpv_free(ac); mpv_free(vf); mpv_free(d);
         } else if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART || ev->event_id == MPV_EVENT_AUDIO_RECONFIG
