@@ -12,26 +12,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        env:
+          PRIVATE: ${{ github.event.repository.private }}
+          ENABLE_ARM64: ${{ vars.ENABLE_ARM64 }}
+        run: |
+          # Native arm64 runners are free only for public repos; on a private repo the jobs would
+          # queue forever, so linux-arm64 is skipped unless the repo is public or vars.ENABLE_ARM64=1.
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          arm = os.environ.get("PRIVATE") != "true" or os.environ.get("ENABLE_ARM64") == "1"
+          targets = {"linux-x86_64": "ubuntu-latest", "win-x86_64": "ubuntu-latest", "win-arm64": "ubuntu-latest"}
+          if arm: targets["linux-arm64"] = "ubuntu-24.04-arm"
+          inc = [{"profile": p, "target": t, "runner": r, "network": "0"} for p in ("music", "video") for t, r in targets.items()]
+          inc.append({"profile": "music", "target": "linux-x86_64", "runner": "ubuntu-latest", "network": "1"})
+          print("matrix=" + json.dumps({"include": inc}))
+          PY
+
   build:
+    needs: plan
     name: ${{ matrix.profile }} / ${{ matrix.target }}${{ matrix.network == '1' && ' / net' || '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
-    # Native arm64 runners are free only for public repos. On a private repo these jobs would
-    # queue forever, so they are skipped unless the repo is public or vars.ENABLE_ARM64 == '1'.
-    if: ${{ matrix.runner != 'ubuntu-24.04-arm' || github.event.repository.private == false || vars.ENABLE_ARM64 == '1' }}
     strategy:
       fail-fast: false
-      matrix:
-        profile: [music, video]
-        target: [linux-x86_64, linux-arm64, win-x86_64, win-arm64]
-        network: ['0']
-        include:
-          - { target: linux-x86_64, runner: ubuntu-latest }
-          - { target: linux-arm64,  runner: ubuntu-24.04-arm }
-          - { target: win-x86_64,   runner: ubuntu-latest }
-          - { target: win-arm64,    runner: ubuntu-latest }
-          # extra job: network build + HTTP header / HLS tests
-          - { profile: music, target: linux-x86_64, network: '1', runner: ubuntu-latest }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       WITH_NETWORK: ${{ matrix.network }}
       ID: ${{ matrix.profile }}-${{ matrix.target }}${{ matrix.network == '1' && '-net' || '' }}
