@@ -62,6 +62,24 @@ if [ "$WITH_NETWORK" = 1 ] && ! stamp mbedtls; then
   cmake --build "$BUILD/mbedtls" -j"$JOBS"; cmake --install "$BUILD/mbedtls"; mark mbedtls
 fi
 
+# ---- zlib (static; needed by FFmpeg png decoder -> embedded PNG covers) ---
+if ! stamp zlib; then
+  log "zlib $ZLIB_VERSION"
+  rm -rf "$BUILD/zlib"; mkdir -p "$BUILD/zlib"
+  curl -fL --retry 3 "$ZLIB_URL" | tar -xz --strip-components=1 -C "$BUILD/zlib"
+  ( cd "$BUILD/zlib"
+    ZCF="-O2 -fPIC -ffunction-sections -fdata-sections"
+    [ "$OS" = linux ] && ZCF="$ZCF -DZ_HAVE_UNISTD_H"
+    for f in adler32 compress crc32 deflate infback inffast inflate inftrees trees uncompr zutil; do
+      $CC $ZCF -c "$f.c" -o "$f.o"
+    done
+    ${AR:-ar} rcs libz.a ./*.o
+    mkdir -p "$PREFIX/include" "$PREFIX/lib/pkgconfig"
+    cp zlib.h zconf.h "$PREFIX/include/"; cp libz.a "$PREFIX/lib/"
+    printf 'prefix=%s\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\nName: zlib\nDescription: zlib\nVersion: %s\nLibs: -L${libdir} -lz\nCflags: -I${includedir}\n' "$PREFIX" "$ZLIB_VERSION" > "$PREFIX/lib/pkgconfig/zlib.pc" )
+  mark zlib
+fi
+
 # ---- libplacebo (no GPU backends) --------------------------------------
 if ! stamp libplacebo; then
   log "libplacebo $LIBPLACEBO_TAG"

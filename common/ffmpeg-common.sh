@@ -10,6 +10,7 @@ FF_COMMON=(
   --disable-autodetect          # no accidental system libs (zlib, lzma, iconv, vaapi, ...)
   --disable-programs --disable-doc --disable-debug --disable-stripping
   --disable-avdevice
+  --enable-zlib                 # png decoder (embedded PNG covers) needs it; zlib is built by build.sh
   --disable-hwaccels
   --disable-everything          # whitelist below
   --enable-avutil --enable-avcodec --enable-avformat --enable-avfilter
