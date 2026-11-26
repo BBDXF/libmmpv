@@ -13,7 +13,8 @@ if [ -n "${MEDIA_DIR:-}" ]; then M="$MEDIA_DIR"; else
   "$HERE/gen_media.sh" "$W/media" video >/dev/null || { echo "media generation failed"; exit 1; }
   M="$W/media"
 fi
-BASE=(-o ao=null -o ao-null-untimed=yes -o vo=null -o hwdec=no)
+# real-time playback (no ao-null-untimed): with untimed output a 2s clip can end before the FILE_LOADED handler reads properties (race seen in run 45828917964)
+BASE=(-o ao=null -o vo=null -o hwdec=no)
 hard=0; soft=0
 run()  { echo "--- $*"; "$S" "${BASE[@]}" "$@" || { echo "^^^ HARD FAIL"; hard=$((hard+1)); }; }
 soft() { echo "--- (soft) $*"; "$S" "${BASE[@]}" "$@" || { echo "^^^ soft fail"; soft=$((soft+1)); }; }
