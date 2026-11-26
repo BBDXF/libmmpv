@@ -1,0 +1,17 @@
+diff --git a/meson.build b/meson.build
+index b15f310..57b0fa5 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1437,6 +1437,12 @@ features += {'d3d-hwaccel': d3d_hwaccel.allowed()}
+ if features['d3d-hwaccel']
+     sources += files('video/d3d.c',
+                      'video/filter/vf_d3d11vpp.c')
++    # libmmpv: vf_d3d11vpp.c uses d3d11_helpers.c (d3d11_get_csp_name) and needs HAVE_DXGI_DEBUG_D3D11;
++    # upstream only builds/detects these when d3d11/egl-angle-win32/vulkan is enabled.
++    if not (features['d3d11'] or features['egl-angle-win32'] or (features['vulkan'] and win32))
++        sources += files('video/out/gpu/d3d11_helpers.c')
++        features += {'dxgi-debug-d3d11': cc.has_header_symbol('d3d11sdklayers.h', 'DXGI_DEBUG_D3D11')}
++    endif
+ endif
+ 
+ amf = cc.has_header('AMF/core/Factory.h', required:

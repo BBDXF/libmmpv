@@ -60,22 +60,6 @@ int main(int argc, char **argv)
     mpv_handle *h = mpv_create();
     if (!h) { fprintf(stderr, "FAIL: mpv_create\n"); return 2; }
 
-    if (hwhelp) {
-        /* "hwdec=help" prints every hwdec method compiled into libavcodec/mpv (no GPU needed). */
-        mpv_request_log_messages(h, "info");
-        int hr = mpv_set_option_string(h, "hwdec", "help");
-        printf("hwdec=help returned %d (%s)\n", hr, mpv_error_string(hr));
-        for (int i = 0; i < 20; i++) {
-            mpv_event *ev = mpv_wait_event(h, 0.1);
-            if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
-                mpv_event_log_message *m = ev->data;
-                printf("HWDEC-LIST %s", m->text);
-            }
-        }
-        mpv_terminate_destroy(h);
-        return 0;
-    }
-
     for (int i = 0; i < nopts; i++) {
         char *eq = strchr(opts[i], '=');
         if (!eq) { fprintf(stderr, "bad -o %s\n", opts[i]); return 2; }
@@ -104,8 +88,23 @@ int main(int argc, char **argv)
 
     int r = mpv_initialize(h);
     if (r < 0) fail_mpv("mpv_initialize", r);
+    if (hwhelp) {
+        /* "hwdec=help" prints every hwdec method compiled into libavcodec/mpv (no GPU needed). */
+        mpv_request_log_messages(h, "info");
+        int hr = mpv_set_property_string(h, "hwdec", "help");
+        printf("hwdec=help returned %d (%s)\n", hr, mpv_error_string(hr));
+        for (int i = 0; i < 30; i++) {
+            mpv_event *ev = mpv_wait_event(h, 0.1);
+            if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
+                mpv_event_log_message *m = ev->data;
+                printf("HWDEC-LIST %s", m->text);
+            }
+        }
+        mpv_terminate_destroy(h);
+        return 0;
+    }
     printf("client-api-version: %lu\n", mpv_client_api_version());
-    mpv_request_log_messages(h, "warn");
+    { const char *lv = getenv("MMPV_LOGLEVEL"); mpv_request_log_messages(h, lv ? lv : "warn"); }
     if (probe) { mpv_terminate_destroy(h); puts("OK probe"); return 0; }
 
 #ifdef MMPV_SW_RENDER

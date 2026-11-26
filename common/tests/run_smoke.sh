@@ -50,7 +50,10 @@ if [ "$P" = video ]; then
   for m in auto-copy ${EXPECT_HWDEC:-}; do
     for clip in "v_h264.mp4 h264 aac" "v_hevc.mp4 hevc aac" "v_vp9.webm vp9 opus" "v_av1.mkv av1 opus"; do
       set -- $clip
-      run "$M/$1" -V "$2" -A "$3" -o hwdec="$m"
+      echo "--- (hwdec=$m, verbose vd log) $*"
+      MMPV_LOGLEVEL=v "$S" "${BASE[@]}" "$M/$1" -V "$2" -A "$3" -o hwdec="$m" > "$W/hw.log" 2>&1; rc=$?
+      grep -E "hwdec|hardware decod|Looking at|Could not create|software decod|CUDA|VAAPI|vaapi|d3d11|DXVA|dxva|^(OK|FAILED|decoded)" "$W/hw.log" | sort | uniq -c | head -12
+      [ $rc = 0 ] || { echo "^^^ HARD FAIL (rc=$rc)"; hard=$((hard+1)); }
     done
   done
 else
