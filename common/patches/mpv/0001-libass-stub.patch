@@ -50,7 +50,7 @@ index 0000000..fe256ec
 +license as mpv's LGPL-2.1+ code.
 diff --git a/third_party/libass-stub/ass_stub.c b/third_party/libass-stub/ass_stub.c
 new file mode 100644
-index 0000000..94853df
+index 0000000..417fcd9
 --- /dev/null
 +++ b/third_party/libass-stub/ass_stub.c
 @@ -0,0 +1,152 @@
@@ -77,7 +77,7 @@ index 0000000..94853df
 +int ass_library_version(void) { return LIBASS_VERSION; }
 +void ass_set_fonts_dir(ASS_Library *priv, const char *d) { (void)priv; (void)d; }
 +void ass_set_extract_fonts(ASS_Library *priv, int e) { (void)priv; (void)e; }
-+void ass_set_style_overrides(ASS_Library *priv, const char *const *l) { (void)priv; (void)l; }
++void ass_set_style_overrides(ASS_Library *priv, char **l) { (void)priv; (void)l; }
 +void ass_add_font(ASS_Library *l, const char *n, const char *d, int s) { (void)l; (void)n; (void)d; (void)s; }
 +void ass_set_message_cb(ASS_Library *priv,
 +                        void (*cb)(int, const char *, va_list, void *), void *d)
