@@ -4,15 +4,15 @@
 . "$(dirname "$0")/lib.sh"
 FF="${1:-$SRC_DIR/ffmpeg}"
 . "$ROOT/common/ffmpeg-common.sh"; . "$ROOT/music/ffmpeg-music.sh"; MUSIC=("${FF_PROFILE[@]}")
-. "$ROOT/video/ffmpeg-video.sh"
+. "$ROOT/video/ffmpeg-video.sh"; . "$ROOT/video/ffmpeg-hwdec.sh"
 rc=0
-for a in "${FF_AUDIO[@]}" "${FF_NETWORK[@]}" "${MUSIC[@]}" "${FF_PROFILE[@]}"; do
-  case "$a" in --enable-decoder=*|--enable-demuxer=*|--enable-parser=*|--enable-protocol=*|--enable-bsf=*|--enable-filter=*) ;; *) continue;; esac
+for a in "${FF_AUDIO[@]}" "${FF_NETWORK[@]}" "${MUSIC[@]}" "${FF_PROFILE[@]}" "${FF_HW_COMMON[@]}" "${FF_HW_WINDOWS[@]}" "${FF_HW_NVDEC[@]}" "${FF_HW_VAAPI[@]}"; do
+  case "$a" in --enable-decoder=*|--enable-demuxer=*|--enable-parser=*|--enable-protocol=*|--enable-bsf=*|--enable-filter=*|--enable-hwaccel=*) ;; *) continue;; esac
   kind=${a#--enable-}; kind=${kind%%=*}; names=${a#*=}; names=${names//\'/}
   case $kind in
     decoder) f=libavcodec/allcodecs.c;; parser) f=libavcodec/parsers.c;;
     bsf) f=libavcodec/bitstream_filters.c;; demuxer) f=libavformat/allformats.c;;
-    protocol) f=libavformat/protocols.c;; filter) f=libavfilter/allfilters.c;;
+    protocol) f=libavformat/protocols.c;; hwaccel) f=libavcodec/hwaccels.h;; filter) f=libavfilter/allfilters.c;;
   esac
   IFS=, read -ra arr <<<"$names"
   for n in "${arr[@]}"; do

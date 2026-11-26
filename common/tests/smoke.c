@@ -10,6 +10,7 @@
  * -P  per-file header, passed via loadfile's options argument
  * -V  expect video codec AND a decoded picture; -C expect a video(cover) track codec only;
  * -N  expect NO video track at all
+ * --hwdec-help  print the hwdec methods compiled in (via hwdec=help) and exit
  * --sw  render frames with the software render API (needs -DMMPV_SW_RENDER)
  * Exit codes: 0 ok, 1 expectation failed, 2 mpv error, 3 timeout.
  */
@@ -36,13 +37,14 @@ static char *prop(mpv_handle *h, const char *name)
 int main(int argc, char **argv)
 {
     const char *file = NULL, *exp_a = NULL, *exp_v = NULL, *perfile = NULL, *exp_c = NULL;
-    int probe = 0, sw = 0, novideo = 0, nopts = 0, nh = 0;
+    int probe = 0, sw = 0, novideo = 0, hwhelp = 0, nopts = 0, nh = 0;
     const char *opts[64];
     char *hdrs[32];
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--probe")) probe = 1;
         else if (!strcmp(argv[i], "--sw")) sw = 1;
+        else if (!strcmp(argv[i], "--hwdec-help")) hwhelp = 1;
         else if (!strcmp(argv[i], "-o") && i + 1 < argc && nopts < 64) opts[nopts++] = argv[++i];
         else if (!strcmp(argv[i], "-H") && i + 1 < argc && nh < 32) hdrs[nh++] = argv[++i];
         else if (!strcmp(argv[i], "-P") && i + 1 < argc) perfile = argv[++i];
@@ -53,10 +55,26 @@ int main(int argc, char **argv)
         else if (argv[i][0] != '-' && !file) file = argv[i];
         else { fprintf(stderr, "bad argument: %s\n", argv[i]); return 2; }
     }
-    if (!file && !probe) { fprintf(stderr, "usage: see source header\n"); return 2; }
+    if (!file && !probe && !hwhelp) { fprintf(stderr, "usage: see source header\n"); return 2; }
 
     mpv_handle *h = mpv_create();
     if (!h) { fprintf(stderr, "FAIL: mpv_create\n"); return 2; }
+
+    if (hwhelp) {
+        /* "hwdec=help" prints every hwdec method compiled into libavcodec/mpv (no GPU needed). */
+        mpv_request_log_messages(h, "info");
+        int hr = mpv_set_option_string(h, "hwdec", "help");
+        printf("hwdec=help returned %d (%s)\n", hr, mpv_error_string(hr));
+        for (int i = 0; i < 20; i++) {
+            mpv_event *ev = mpv_wait_event(h, 0.1);
+            if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
+                mpv_event_log_message *m = ev->data;
+                printf("HWDEC-LIST %s", m->text);
+            }
+        }
+        mpv_terminate_destroy(h);
+        return 0;
+    }
 
     for (int i = 0; i < nopts; i++) {
         char *eq = strchr(opts[i], '=');
@@ -153,6 +171,8 @@ int main(int argc, char **argv)
         } else if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART || ev->event_id == MPV_EVENT_AUDIO_RECONFIG
                    || ev->event_id == MPV_EVENT_VIDEO_RECONFIG) {
             char *w = prop(h, "width"), *sr = prop(h, "audio-params/samplerate");
+            char *hw = prop(h, "hwdec-current");
+            if (hw) { printf("hwdec-current: %s\n", hw); mpv_free(hw); }
             if (w && atoi(w) > 0) got_video = 1;
             if (sr && atoi(sr) > 0) got_audio = 1;
             mpv_free(w); mpv_free(sr);

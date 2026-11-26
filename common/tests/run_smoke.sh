@@ -15,8 +15,8 @@ if [ -n "${MEDIA_DIR:-}" ]; then M="$MEDIA_DIR"; else
 fi
 BASE=(-o ao=null -o ao-null-untimed=yes -o vo=null -o hwdec=no)
 hard=0; soft=0
-run()  { echo "--- $*"; "$S" "$@" "${BASE[@]}" || { echo "^^^ HARD FAIL"; hard=$((hard+1)); }; }
-soft() { echo "--- (soft) $*"; "$S" "$@" "${BASE[@]}" || { echo "^^^ soft fail"; soft=$((soft+1)); }; }
+run()  { echo "--- $*"; "$S" "${BASE[@]}" "$@" || { echo "^^^ HARD FAIL"; hard=$((hard+1)); }; }
+soft() { echo "--- (soft) $*"; "$S" "${BASE[@]}" "$@" || { echo "^^^ soft fail"; soft=$((soft+1)); }; }
 
 "$S" --probe || { echo "probe failed"; hard=$((hard+1)); }
 run "$M/a.mp3"   -A mp3 -N
@@ -39,6 +39,20 @@ if [ "$P" = video ]; then
   run "$M/v_av1.mkv"  -V av1  -A opus
   run "$M/v_h264.mp4" -V h264 --sw
   run "$M/v_av1.mkv"  -V av1  --sw
+  # ---- hardware decode config. CI has no GPU, so the only provable things are: (1) the methods are compiled in,
+  # (2) requesting them falls back to software and playback still succeeds, (3) hwdec-current is logged.
+  echo "--- hwdec methods compiled in (hwdec=help)"
+  "$S" --hwdec-help | tee "$W/hwdec-help.txt"
+  for m in ${EXPECT_HWDEC:-}; do
+    if grep -qF "$m" "$W/hwdec-help.txt"; then echo "HWDEC-CONFIG PASS: $m is compiled in"
+    else echo "HWDEC-CONFIG FAIL: $m not listed by hwdec=help"; hard=$((hard+1)); fi
+  done
+  for m in auto-copy ${EXPECT_HWDEC:-}; do
+    for clip in "v_h264.mp4 h264 aac" "v_hevc.mp4 hevc aac" "v_vp9.webm vp9 opus" "v_av1.mkv av1 opus"; do
+      set -- $clip
+      run "$M/$1" -V "$2" -A "$3" -o hwdec="$m"
+    done
+  done
 else
   # documented caveat: audio-only build plays only the audio track of a video file
   run "$M/v_h264.mp4" -A aac    # video file: only the audio track is played (no video decoder built)

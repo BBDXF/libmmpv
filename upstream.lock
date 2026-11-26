@@ -25,3 +25,7 @@ LLVM_MINGW_VERSION=20261117
 # FFmpeg's png decoder (embedded PNG cover art) needs zlib; built from source as a tiny static lib.
 ZLIB_VERSION=1.3.1
 ZLIB_URL=https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
+
+# HWDEC=1 (video profile, x86_64): NVIDIA codec headers, header-only (MIT-style), FFmpeg dlopen()s libcuda/libnvcuvid at runtime.
+NVCODEC_URL=https://github.com/FFmpeg/nv-codec-headers.git
+NVCODEC_TAG=n13.1.15.0

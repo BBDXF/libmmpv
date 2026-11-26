@@ -21,6 +21,7 @@ clone mpv        "$MPV_URL"        "$MPV_TAG"
 clone ffmpeg     "$FFMPEG_URL"     "$FFMPEG_TAG"
 clone libplacebo "$LIBPLACEBO_URL" "$LIBPLACEBO_TAG" submodules
 [ "$PROFILE" = video ] && clone dav1d "$DAV1D_URL" "$DAV1D_TAG"
+[ "$PROFILE" = video ] && [ "${HWDEC:-1}" = 1 ] && clone nv-codec-headers "$NVCODEC_URL" "$NVCODEC_TAG"
 
 if [ "$WITH_NETWORK" = 1 ] && [ ! -d "$SRC_DIR/mbedtls" ]; then
   log "download mbedtls $MBEDTLS_VERSION"

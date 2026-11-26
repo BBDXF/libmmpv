@@ -1,0 +1,5 @@
+# Windows hwdec: mpv's D3D11/DXVA2 hwcontext helpers (video/d3d.c: standalone device creation and driver
+# blocklist). d3d-hwaccel only requires win32 (meson.build:1432); d3d9-hwaccel only requires d3d-hwaccel.
+# NOTE: do NOT enable `d3d11` (needs shaderc + spirv-cross) or egl-angle.
+-Dd3d-hwaccel=enabled
+-Dd3d9-hwaccel=enabled

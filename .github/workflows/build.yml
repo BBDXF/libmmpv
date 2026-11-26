@@ -5,7 +5,16 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      hwdec:
+        description: 'video profile: build hardware-decode (copy-back) support (1/0)'
+        default: '1'
   workflow_call:
+    inputs:
+      hwdec:
+        type: string
+        default: '1'
+
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
@@ -44,6 +53,7 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       WITH_NETWORK: ${{ matrix.network }}
+      HWDEC: ${{ inputs.hwdec || '1' }}
       ID: ${{ matrix.profile }}-${{ matrix.target }}${{ matrix.network == '1' && '-net' || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +63,7 @@ jobs:
           sudo apt-get update
           PKGS="nasm cmake ninja-build pkg-config python3-pip ccache zip xz-utils curl"
           case "${{ matrix.target }}" in
-            linux-*) PKGS="$PKGS libasound2-dev libpulse-dev libpipewire-0.3-dev ffmpeg" ;;
+            linux-*) PKGS="$PKGS libasound2-dev libpulse-dev libpipewire-0.3-dev libva-dev libdrm-dev ffmpeg" ;;
           esac
           sudo apt-get install -y --no-install-recommends $PKGS
           python3 -m pip install --user --break-system-packages meson
@@ -91,7 +101,12 @@ jobs:
 
       - name: Smoke test (native Linux)
         if: startsWith(matrix.target, 'linux-')
-        run: common/tests/run_smoke.sh ${{ matrix.profile }} "dist/$ID"
+        run: |
+          EXP=""
+          if [ "${{ matrix.profile }}" = video ] && [ "$HWDEC" = 1 ]; then
+            EXP="vaapi-copy"; [ "${{ matrix.target }}" = linux-x86_64 ] && EXP="$EXP nvdec-copy"
+          fi
+          EXPECT_HWDEC="$EXP" common/tests/run_smoke.sh ${{ matrix.profile }} "dist/$ID"
 
       - name: HTTP header / HLS test (network build)
         if: matrix.network == '1'
@@ -191,4 +206,8 @@ jobs:
         shell: bash
         run: |
           D="dist/${{ matrix.profile }}-win-${{ matrix.arch }}"
-          SMOKE_BIN="$PWD/$D/bin/mmpv_smoke.exe" MEDIA_DIR="$PWD/media" common/tests/run_smoke.sh ${{ matrix.profile }} "$D"
+          EXP=""
+          if [ "${{ matrix.profile }}" = video ] && [ "${{ inputs.hwdec || '1' }}" = 1 ]; then
+            EXP="d3d11va-copy dxva2-copy"; [ "${{ matrix.arch }}" = x86_64 ] && EXP="$EXP nvdec-copy"
+          fi
+          EXPECT_HWDEC="$EXP" SMOKE_BIN="$PWD/$D/bin/mmpv_smoke.exe" MEDIA_DIR="$PWD/media" common/tests/run_smoke.sh ${{ matrix.profile }} "$D"

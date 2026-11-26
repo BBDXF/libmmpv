@@ -13,7 +13,7 @@ check() { # file srcfile optionsfile
 }
 mpvopts="$MPV/meson.options"; [ -f "$mpvopts" ] || mpvopts="$MPV/meson_options.txt"
 for f in common/mpv-common.options common/mpv-linux.options common/mpv-windows.options \
-         music/mpv-music.options video/mpv-video.options; do
+         music/mpv-music.options video/mpv-video.options video/mpv-hwdec-windows.options; do
   check "$f" "$mpvopts" "$ROOT/$f"
 done
 [ -f "$PL/meson_options.txt" ] && check common/libplacebo.options "$PL/meson_options.txt" "$ROOT/common/libplacebo.options"

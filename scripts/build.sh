@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # build.sh <music|video> <linux-x86_64|linux-arm64|win-x86_64|win-arm64>
-# Env: WITH_NETWORK=1 (http/https/HLS via mbedTLS), JOBS=n, USE_CCACHE=0, FORCE=1 (rebuild deps)
+# Env: HWDEC=0 (video: disable hardware decode, default 1), WITH_NETWORK=1 (http/https/HLS via mbedTLS), JOBS=n, USE_CCACHE=0, FORCE=1 (rebuild deps)
 # Output: dist/<profile>-<target>[-net]/ + dist/libmmpv-<profile>-<target>[-net].{tar.gz,zip}
 . "$(dirname "$0")/lib.sh"
 PROFILE=${1:?profile}; TARGET=${2:?target}
 check_profile "$PROFILE"; parse_target "$TARGET"
 WITH_NETWORK=${WITH_NETWORK:-0}; export WITH_NETWORK
+HWDEC=${HWDEC:-1}; export HWDEC   # video profile only: hardware decode (copy-back) paths
 JOBS=${JOBS:-$(nproc)}
 ID="$PROFILE-$TARGET"; [ "$WITH_NETWORK" = 1 ] && ID="$ID-net"
 BUILD="$ROOT/build/$ID"; PREFIX="$BUILD/prefix"; STAGE="$BUILD/stage"
@@ -41,6 +42,13 @@ if [ "$PROFILE" = video ] && ! stamp dav1d; then
   meson setup "$BUILD/dav1d" "$SRC_DIR/dav1d" "${MESON_COMMON[@]}" --default-library=static \
     -Denable_tools=false -Denable_tests=false -Denable_examples=false -Denable_docs=false
   meson install -C "$BUILD/dav1d"; mark dav1d
+fi
+
+# ---- nv-codec-headers (video + HWDEC, x86_64; header-only) ---------------
+if [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ] && [ "$ARCH" = x86_64 ] && ! stamp nvcodec; then
+  log "nv-codec-headers $NVCODEC_TAG"
+  make -C "$SRC_DIR/nv-codec-headers" PREFIX="$PREFIX" install
+  mark nvcodec
 fi
 
 # ---- mbedTLS (WITH_NETWORK=1) ------------------------------------------
@@ -91,12 +99,19 @@ if ! stamp libplacebo; then
 fi
 
 # ---- FFmpeg (static) ---------------------------------------------------
-if ! stamp ffmpeg; then
+if ! stamp "ffmpeg-hw$HWDEC"; then
   log "FFmpeg $FFMPEG_TAG"
   # shellcheck disable=SC1091
   . "$ROOT/common/ffmpeg-common.sh"; . "$ROOT/$PROFILE/ffmpeg-$PROFILE.sh"
   FF_ARGS=("${FF_COMMON[@]}" "${FF_PROFILE[@]}")
   if [ "$WITH_NETWORK" = 1 ]; then FF_ARGS+=("${FF_NETWORK[@]}"); else FF_ARGS+=(--disable-network); fi
+  if [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ]; then
+    . "$ROOT/video/ffmpeg-hwdec.sh"
+    FF_ARGS+=("${FF_HW_COMMON[@]}")
+    [ "$OS" = windows ] && FF_ARGS+=("${FF_HW_WINDOWS[@]}")
+    [ "$OS" = linux ]   && FF_ARGS+=("${FF_HW_VAAPI[@]}")
+    [ "$ARCH" = x86_64 ] && FF_ARGS+=("${FF_HW_NVDEC[@]}")
+  fi
   FF_PLAT=()
   if [ "$OS" = windows ]; then
     FF_PLAT+=(--enable-cross-compile --target-os=mingw32 --arch="$FF_ARCH"
@@ -113,14 +128,16 @@ if ! stamp ffmpeg; then
       --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" \
       "${FF_PLAT[@]}" "${FF_ARGS[@]}" || { tail -50 ffbuild/config.log; exit 1; }
     make -j"$JOBS"; make install )
-  mark ffmpeg
+  mark "ffmpeg-hw$HWDEC"
 fi
 
 # ---- mpv ---------------------------------------------------------------
 log "mpv $MPV_TAG ($PROFILE)"
 mapfile -t MPV_OPTS < <(read_opts "$ROOT/common/mpv-common.options"
                         read_opts "$ROOT/common/mpv-$OS.options"
-                        read_opts "$ROOT/$PROFILE/mpv-$PROFILE.options")
+                        read_opts "$ROOT/$PROFILE/mpv-$PROFILE.options"
+                        if [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ] && [ "$OS" = windows ]; then
+                          read_opts "$ROOT/video/mpv-hwdec-windows.options"; fi)
 rm -rf "$BUILD/mpv"
 meson setup "$BUILD/mpv" "$SRC_DIR/mpv" "${MESON_COMMON[@]}" \
   --default-library=shared --prefer-static -Db_ndebug=true "${MPV_OPTS[@]}"
@@ -128,3 +145,4 @@ meson compile -C "$BUILD/mpv" -j "$JOBS"
 rm -rf "$STAGE"; DESTDIR="$STAGE" meson install -C "$BUILD/mpv"
 
 "$ROOT/scripts/package.sh" "$PROFILE" "$TARGET"
+"$ROOT/scripts/check-deps.sh" "$TARGET" "$ROOT/dist/$ID"
