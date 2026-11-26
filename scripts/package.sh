@@ -84,7 +84,7 @@ raw=$(stat -c %s "$LIB"); gz=$(gzip -9 -c "$LIB" | wc -c); rawu=$(stat -c %s "$O
     END { for (g in tot) printf "%-14s %10d bytes  %5.1f%%\n", g, tot[g], 100*tot[g]/all; printf "%-14s %10d bytes (sum of sized symbols)\n","TOTAL",all }' | sort -k2 -nr
   echo '```'
   echo; echo '## Largest 15 symbols'; echo '```'
-  "$NM" -S --defined-only -t d "$OUT/libmpv.unstripped" 2>/dev/null | awk 'NF>=4{print $2+0, $4}' | sort -nr | head -15
+  "$NM" -S --defined-only -t d "$OUT/libmpv.unstripped" 2>/dev/null | awk 'NF>=4{print $2+0, $4}' | sort -nr | sed -n 1,15p
   echo '```'
   echo; echo '## Sections'; echo '```'
   if [ "$OS" = linux ]; then size -A "$OUT/libmpv.unstripped" | awk '$2>20000'; else llvm-size -A "$OUT/libmpv.unstripped" 2>/dev/null | awk '$2>20000'; fi
