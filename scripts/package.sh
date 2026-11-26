@@ -81,7 +81,7 @@ raw=$(stat -c %s "$LIB"); gz=$(gzip -9 -c "$LIB" | wc -c); rawu=$(stat -c %s "$O
       else if (n ~ /^_?(mbedtls|psa_|mbedtls_)/) g="mbedtls";
       else if (n ~ /^_?(mp_|mpv_|m_|ao_|vo_|demux|stream_|sub_|osd_|sd_|ra_|gl_|cmd_|mpctx|talloc|ta_)/) g="mpv";
       tot[g]+=sz; all+=sz }
-    END { for (g in tot) printf "%-14s %10d bytes  %5.1f%%\n", g, tot[g], 100*tot[g]/all; printf "%-14s %10d bytes (sum of sized symbols)\n","TOTAL",all }' | sort -k2 -nr
+    END { for (g in tot) printf "%-14s %10d bytes  %5.1f%%\n", g, tot[g], (all>0?100*tot[g]/all:0); printf "%-14s %10d bytes (sum of sized symbols)\n","TOTAL",all }' | sort -k2 -nr
   echo '```'
   echo; echo '## Largest 15 symbols'; echo '```'
   "$NM" -S --defined-only -t d "$OUT/libmpv.unstripped" 2>/dev/null | awk 'NF>=4{print $2+0, $4}' | sort -nr | sed -n 1,15p
