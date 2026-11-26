@@ -175,6 +175,18 @@ jobs:
         shell: bash
         run: |
           cd dist/${{ matrix.profile }}-win-${{ matrix.arch }}/bin && ./mmpv_smoke.exe --probe
+      - name: Diagnose load failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $d = "dist/${{ matrix.profile }}-win-${{ matrix.arch }}/bin"
+          Push-Location $d
+          & .\mmpv_smoke.exe --probe; "pwsh exit code: $LASTEXITCODE (0xC0000135 = DLL not found: $([Convert]::ToString($LASTEXITCODE,16)))"
+          Pop-Location
+          foreach ($n in "ole32","USER32","AVRT","ntdll","api-ms-win-core-path-l1-1-0","KERNEL32","SHELL32","ADVAPI32","api-ms-win-crt-stdio-l1-1-0","api-ms-win-crt-runtime-l1-1-0","api-ms-win-crt-filesystem-l1-1-0","api-ms-win-crt-heap-l1-1-0","api-ms-win-crt-string-l1-1-0","api-ms-win-crt-math-l1-1-0","api-ms-win-crt-time-l1-1-0","api-ms-win-crt-locale-l1-1-0","api-ms-win-crt-convert-l1-1-0","api-ms-win-crt-utility-l1-1-0","api-ms-win-crt-environment-l1-1-0","ucrtbase","msvcrt","bcrypt","ws2_32") {
+            "{0,-36} {1}" -f $n, (Test-Path "$env:windir\System32\$n.dll")
+          }
+          Get-Content dist/${{ matrix.profile }}-win-${{ matrix.arch }}/SIZES.md | Select-String "DLL Name"
       - name: Decode tests
         shell: bash
         run: |
