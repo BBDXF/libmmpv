@@ -3,7 +3,7 @@
 set -euo pipefail
 O=${1:?outdir}; mkdir -p "$O"; cd "$O"
 F() { ffmpeg -hide_banner -loglevel error -y "$@"; }
-S=(-f lavfi -i "sine=frequency=440:duration=2" -ar 44100 -ac 2)
+S=(-f lavfi -i "sine=frequency=440:duration=2" -ar 48000 -ac 2)
 F "${S[@]}" -c:a libmp3lame a.mp3
 F "${S[@]}" -c:a flac a.flac
 F "${S[@]}" -c:a libvorbis a.ogg

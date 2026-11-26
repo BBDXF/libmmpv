@@ -7,7 +7,7 @@ W=${WORK:-$(mktemp -d)}; mkdir -p "$W/www/hls" "$W/www/hlsenc"; PORT=${PORT:-187
 EVIDENCE=${EVIDENCE:-$W/header-evidence.txt}; LOG="$W/requests.jsonl"; : > "$LOG"
 gcc -O1 -Wall -I"$D/include" -o "$W/mmpv_smoke" "$HERE/smoke.c" -L"$D/lib" -lmpv -Wl,-rpath,"$D/lib" || exit 1
 F() { ffmpeg -hide_banner -loglevel error -y "$@"; }
-SIN=(-f lavfi -i "sine=frequency=440:duration=6" -ar 44100 -ac 2)
+SIN=(-f lavfi -i "sine=frequency=440:duration=6" -ar 48000 -ac 2)
 F "${SIN[@]}" -c:a libmp3lame "$W/www/a.mp3"
 F "${SIN[@]}" -c:a aac -f hls -hls_time 2 -hls_playlist_type vod -hls_segment_filename "$W/www/hls/seg%d.ts" "$W/www/hls/index.m3u8"
 head -c16 /dev/urandom > "$W/www/hlsenc/enc.key"
