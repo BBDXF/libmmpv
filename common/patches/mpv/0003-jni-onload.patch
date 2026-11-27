@@ -1,0 +1,47 @@
+diff --git a/meson.build b/meson.build
+index b15f310..0ca52e5 100644
+--- a/meson.build
++++ b/meson.build
+@@ -499,6 +499,7 @@ if features['android']
+     dependencies += cc.find_library('android')
+     sources += files('misc/jni.c',
+                      'osdep/android/strnlen.c',
++                     'osdep/android/jni_onload.c',
+                      'video/out/android_common.c',
+                      'video/out/vo_mediacodec_embed.c')
+ endif
+diff --git a/osdep/android/jni_onload.c b/osdep/android/jni_onload.c
+new file mode 100644
+index 0000000..16a84c0
+--- /dev/null
++++ b/osdep/android/jni_onload.c
+@@ -0,0 +1,29 @@
++/* JNI_OnLoad for libmpv on Android.
++ *
++ * mpv does not call av_jni_set_java_vm() anywhere - it only reads the VM via
++ * av_jni_get_java_vm() (misc/jni.c). On Android the JavaVM must therefore be
++ * registered from outside, which the Android runtime does by calling the
++ * JNI_OnLoad() entry point of a library after System.loadLibrary().
++ *
++ * We export JNI_OnLoad() (marked JNIEXPORT so it survives mpv's hidden-visibility
++ * library and -Bsymbolic) so a host app that loads libmpv.so gets the VM registered
++ * automatically; the Android AOs (audiotrack/aaudio) and MediaCodec hwdec then find it.
++ *
++ * This adds no public C client API: JNI_OnLoad is a JNI-level, not an mpv_* symbol.
++ */
++
++#include <jni.h>
++#include <libavcodec/jni.h>
++
++JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
++{
++    (void)reserved;
++    av_jni_set_java_vm(vm, NULL);
++    return JNI_VERSION_1_6;
++}
++
++JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved)
++{
++    (void)vm;
++    (void)reserved;
++}

@@ -17,7 +17,11 @@ export ID BUILD PREFIX STAGE PROFILE TARGET OS ARCH TRIPLE
 "$ROOT/scripts/apply.sh" "$PROFILE"
 
 # ---- toolchain ---------------------------------------------------------
-if [ "$OS" = windows ]; then
+if [ "$OS" = android ]; then
+  setup_android_env        # sets CC/CXX/AR/NM/STRIP/RANLIB + ANDROID_CFLAGS/ANDROID_LDFLAGS + PATH
+  export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"; unset PKG_CONFIG_PATH || true
+  MESON_MACHINE=(--cross-file "$ROOT/cross/$TARGET.ini")
+elif [ "$OS" = windows ]; then
   command -v "$TRIPLE-clang" >/dev/null || die "$TRIPLE-clang not in PATH (install llvm-mingw $LLVM_MINGW_VERSION)"
   export CC="$TRIPLE-clang" CXX="$TRIPLE-clang++" AR=llvm-ar RANLIB=llvm-ranlib STRIP=llvm-strip
   export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"; unset PKG_CONFIG_PATH || true
@@ -45,7 +49,7 @@ if [ "$PROFILE" = video ] && ! stamp dav1d; then
 fi
 
 # ---- nv-codec-headers (video + HWDEC, x86_64; header-only) ---------------
-if [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ] && [ "$ARCH" = x86_64 ] && ! stamp nvcodec; then
+if [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ] && [ "$ARCH" = x86_64 ] && [ "$OS" != android ] && ! stamp nvcodec; then
   log "nv-codec-headers $NVCODEC_TAG"
   make -C "$SRC_DIR/nv-codec-headers" PREFIX="$PREFIX" install
   mark nvcodec
@@ -105,7 +109,12 @@ if ! stamp "ffmpeg-hw$HWDEC"; then
   . "$ROOT/common/ffmpeg-common.sh"; . "$ROOT/$PROFILE/ffmpeg-$PROFILE.sh"
   FF_ARGS=("${FF_COMMON[@]}" "${FF_PROFILE[@]}")
   if [ "$WITH_NETWORK" = 1 ]; then FF_ARGS+=("${FF_NETWORK[@]}"); else FF_ARGS+=(--disable-network); fi
-  if [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ]; then
+  # Android: no d3d11va/vaapi/nvdec; MediaCodec + JNI (see common/ffmpeg-android.sh).
+  if [ "$OS" = android ]; then
+    . "$ROOT/common/ffmpeg-android.sh"
+    FF_ARGS+=("${FF_ANDROID_COMMON[@]}")
+    [ "$PROFILE" = video ] && FF_ARGS+=("${FF_ANDROID_VIDEO[@]}")
+  elif [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ]; then
     . "$ROOT/video/ffmpeg-hwdec.sh"
     FF_ARGS+=("${FF_HW_COMMON[@]}")
     [ "$OS" = windows ] && FF_ARGS+=("${FF_HW_WINDOWS[@]}")
@@ -113,7 +122,16 @@ if ! stamp "ffmpeg-hw$HWDEC"; then
     [ "$ARCH" = x86_64 ] && FF_ARGS+=("${FF_HW_NVDEC[@]}")
   fi
   FF_PLAT=()
-  if [ "$OS" = windows ]; then
+  if [ "$OS" = android ]; then
+    # NOTE: FFmpeg's configure keeps only the LAST --extra-cflags/--extra-ldflags, so fold
+    # the PREFIX include/lib dirs into the ANDROID_* flags here instead of the generic line.
+    FF_PLAT+=(--enable-cross-compile --target-os=android --arch="$FF_ARCH"
+              --cc="$CC" --cxx="$CXX"
+              --ar=llvm-ar --nm=llvm-nm --ranlib=llvm-ranlib --strip=llvm-strip
+              --extra-cflags="$ANDROID_CFLAGS -I$PREFIX/include"
+              --extra-ldflags="$ANDROID_LDFLAGS -L$PREFIX/lib")
+    [ "$WITH_NETWORK" = 1 ] && FF_PLAT+=(--extra-libs="-lmbedtls -lmbedx509 -lmbedcrypto")
+  elif [ "$OS" = windows ]; then
     FF_PLAT+=(--enable-cross-compile --target-os=mingw32 --arch="$FF_ARCH"
               --cross-prefix="$TRIPLE-" --cc="$TRIPLE-clang" --cxx="$TRIPLE-clang++"
               --ar=llvm-ar --nm=llvm-nm --ranlib=llvm-ranlib --strip=llvm-strip)
@@ -133,9 +151,13 @@ fi
 
 # ---- mpv ---------------------------------------------------------------
 log "mpv $MPV_TAG ($PROFILE)"
+# Profile options can be OS-specific: prefer <profile>/mpv-<profile>-<os>.options,
+# fall back to the generic <profile>/mpv-<profile>.options (e.g. Android video uses no GL).
+MPV_PROFILE_OPTS="$ROOT/$PROFILE/mpv-$PROFILE.options"
+[ -f "$ROOT/$PROFILE/mpv-$PROFILE-$OS.options" ] && MPV_PROFILE_OPTS="$ROOT/$PROFILE/mpv-$PROFILE-$OS.options"
 mapfile -t MPV_OPTS < <(read_opts "$ROOT/common/mpv-common.options"
                         read_opts "$ROOT/common/mpv-$OS.options"
-                        read_opts "$ROOT/$PROFILE/mpv-$PROFILE.options"
+                        read_opts "$MPV_PROFILE_OPTS"
                         if [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ] && [ "$OS" = windows ]; then
                           read_opts "$ROOT/video/mpv-hwdec-windows.options"; fi)
 rm -rf "$BUILD/mpv"

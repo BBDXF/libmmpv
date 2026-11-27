@@ -37,8 +37,12 @@ jobs:
           import json, os
           arm = os.environ.get("PRIVATE") != "true" or os.environ.get("ENABLE_ARM64") == "1"
           targets = {"linux-x86_64": "ubuntu-latest", "win-x86_64": "ubuntu-latest", "win-arm64": "ubuntu-latest"}
+          # Android: two 64-bit ABIs (arm64-v8a, x86_64). Cross-compiled on ubuntu with the NDK;
+          # no emulator, so only build/ELF checks (no runtime). armeabi-v7a/x86 32-bit deferred.
+          android = {"android-arm64": "ubuntu-latest", "android-x86_64": "ubuntu-latest"}
           if arm: targets["linux-arm64"] = "ubuntu-24.04-arm"
           inc = [{"profile": p, "target": t, "runner": r, "network": "0"} for p in ("music", "video") for t, r in targets.items()]
+          inc += [{"profile": p, "target": t, "runner": r, "network": "0"} for p in ("music", "video") for t, r in android.items()]
           inc.append({"profile": "music", "target": "linux-x86_64", "runner": "ubuntu-latest", "network": "1"})
           print("matrix=" + json.dumps({"include": inc}))
           PY
@@ -76,6 +80,20 @@ jobs:
           curl -fL --retry 3 "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64.tar.xz" | tar -xJ -C "$HOME"
           echo "$HOME/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64/bin" >> "$GITHUB_PATH"
 
+      - name: Install Android NDK r28
+        if: startsWith(matrix.target, 'android-')
+        run: |
+          . ./upstream.lock
+          curl -fL --retry 3 -C - "$NDK_URL" -o "$RUNNER_TEMP/android-ndk.zip"
+          # verify size (content may legitimately change upstream; the lock's size is a sanity floor)
+          SIZE=$(stat -c %s "$RUNNER_TEMP/android-ndk.zip")
+          echo "NDK zip size: $SIZE (locked $NDK_SIZE)"
+          unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK=$RUNNER_TEMP/android-ndk-r28c" >> "$GITHUB_ENV"
+          # check the toolchain clang wrappers exist (catches a bad/unpacked NDK early)
+          ls "$RUNNER_TEMP/android-ndk-r28c/toolchains/llvm/prebuilt"/*/bin/aarch64-linux-android24-clang >/dev/null
+          echo "NDK ready"
+
       - uses: actions/cache@v4
         with:
           path: build/src
@@ -98,6 +116,37 @@ jobs:
 
       - name: Size report
         run: cat "dist/$ID/SIZES.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify Android ELF (ABI, NEEDED, 16KB alignment, RELRO, JNI_OnLoad)
+        if: startsWith(matrix.target, 'android-')
+        run: |
+          . ./upstream.lock
+          D="dist/$ID"
+          LIB=$(find "$D/lib" -name 'libmpv.so*' -type f | head -1)
+          ABI=$([ "${{ matrix.target }}" = android-arm64 ] && echo aarch64 || echo x86_64)
+          ARCH=$($ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -h "$LIB" | awk '/Machine:/{print $2}')
+          # aarch64 -> 183, x86_64 -> 62 (e_machine values)
+          EXPECT=$([ "$ABI" = aarch64 ] && echo 183 || echo 62)
+          [ "$ARCH" = "$EXPECT" ] || { echo "ABI mismatch: e_machine=$ARCH want $EXPECT"; exit 1; }
+          echo "OK: e_machine=$ARCH ($ABI)"
+          echo "== NEEDED:"
+          $ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -d "$LIB" | grep NEEDED | sed 's/^/   /'
+          # 16 KB page alignment: every PT_LOAD's ALIGN field (last col) must be 0x4000
+          $ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -lW "$LIB" | awk '
+            $1=="LOAD" { a=$NF; if (a != "0x4000") { bad=1; print "PT_LOAD align="a" (want 0x4000):", $0 } }
+            END { exit bad }'
+          echo "OK: all PT_LOAD 16KB-aligned"
+          # RELRO present and page-aligned end
+          grep -q GNU_RELRO <($ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -lW "$LIB") || { echo "no GNU_RELRO"; exit 1; }
+          echo "OK: GNU_RELRO present"
+          # JNI_OnLoad exported (not hidden)
+          $ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf --dyn-syms "$LIB" | grep -q ' JNI_OnLoad' || { echo "JNI_OnLoad not exported"; exit 1; }
+          echo "OK: JNI_OnLoad exported"
+          # exported symbols: only mpv_* + JNI_OnLoad/JNI_OnUnload (+ C runtime)
+          echo "== non-mpv_* dynamic symbols:"
+          $ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf --dyn-syms "$LIB" | awk '{print $8}' | \
+            grep -E '^[A-Za-z_].*' | grep -v '^mpv_' | grep -vE '^(JNI_OnLoad|JNI_OnUnload|_init|_fini|_edata|_end|__bss_start)$' | sort -u || true
+          echo "OK"
 
       - name: Smoke test (native Linux)
         if: startsWith(matrix.target, 'linux-')

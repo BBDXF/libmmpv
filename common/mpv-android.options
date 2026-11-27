@@ -1,0 +1,31 @@
+# Android-specific mpv meson options (overlay over common/mpv-common.options).
+# Names verified against mpv v0.42.0 meson.options.
+#
+# Audio output: audiotrack (JavaVM via misc/jni.c). aaudio is the NDK's lower-latency
+# AudioTrack; opensles is deprecated. We ship audiotrack only - smallest, one code path.
+-Daudiotrack=enabled
+-Daaudio=disabled
+-Dopensles=disabled
+# No Linux/Windows backends (guard against accidental autodetection on the Android target).
+-Dalsa=disabled
+-Dpulse=disabled
+-Dpipewire=disabled
+-Dwasapi=disabled
+-Djack=disabled
+-Dopenal=disabled
+-Doss-audio=disabled
+-Dsndio=disabled
+-Daudiounit=disabled
+-Dcoreaudio=disabled
+-Davfoundation=disabled
+-Dwin32-smtc=disabled
+# No display / windowing integration except the Android VO (vo_android / mediacodec_embed).
+-Dx11=disabled
+-Dx11-clipboard=disabled
+-Dwayland=disabled
+-Ddrm=disabled
+-Dgbm=disabled
+-Dxv=disabled
+-Dsdl2-gamepad=disabled
+-Dsdl2-audio=disabled
+-Dsdl2-video=disabled

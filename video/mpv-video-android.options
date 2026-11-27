@@ -1,0 +1,19 @@
+# Android video profile mpv options (overlay over common/mpv-common.options + common/mpv-android.options).
+# Names verified against mpv v0.42.0 meson.options.
+#
+# On Android the video output is vo_mediacodec_embed (compiled automatically when
+# features['android'], meson.build:497-504): the host passes an android.view.Surface as
+# --wid and mpv renders to it via MediaCodec. There is NO OpenGL/EGL and no libmpv render.h
+# in this build (the Surface is the render target), so we keep the same GL-disabled set as
+# the music profile. common/mpv-common.options already disables gl/plain-gl/egl-android/
+# android-media-ndk; this file exists so the video profile selects it instead of
+# video/mpv-video.options (which enables the GL render API for desktop).
+#
+# (All flags below are already `disabled` in common/mpv-common.options; kept here only to
+#  make the Android-video intent explicit and to survive a future change to the common file.)
+-Dgl=disabled
+-Dplain-gl=disabled
+-Degl-android=disabled
+-Dandroid-media-ndk=disabled
+-Dvulkan=disabled
+-Dshaderc=disabled

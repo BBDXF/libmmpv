@@ -7,9 +7,9 @@ ID="$PROFILE-$TARGET"; [ "$WITH_NETWORK" = 1 ] && ID="$ID-net"
 STAGE="$ROOT/build/$ID/stage"; OUT="$ROOT/dist/$ID"
 rm -rf "$OUT"; mkdir -p "$OUT/include/mpv" "$OUT/LICENSES"
 STRIP=strip; NM=nm
-[ "$OS" = windows ] && { STRIP=llvm-strip; NM=llvm-nm; }
+[ "$OS" = windows ] || [ "$OS" = android ] && { STRIP=llvm-strip; NM=llvm-nm; }
 
-if [ "$OS" = linux ]; then
+if [ "$OS" = linux ] || [ "$OS" = android ]; then
   mkdir -p "$OUT/lib"
   find "$STAGE" -name 'libmpv.so*' \( -type f -o -type l \) -exec cp -a {} "$OUT/lib/" \;
   LIB=$(find "$OUT/lib" -name 'libmpv.so.*.*.*' -type f | head -1)
@@ -27,7 +27,7 @@ cp "$LIB" "$OUT/libmpv.unstripped"
 # headers: client API always; render API only where a video output exists
 INC=$(find "$STAGE" -type d -path '*/include/mpv' | head -1)
 HDRS=(client.h stream_cb.h)
-[ "$PROFILE" = video ] && HDRS+=(render.h render_gl.h)
+[ "$PROFILE" = video ] && [ "$OS" != android ] && HDRS+=(render.h render_gl.h)
 for h in "${HDRS[@]}"; do cp "$INC/$h" "$OUT/include/mpv/"; done
 
 # licences
@@ -51,7 +51,7 @@ raw=$(stat -c %s "$LIB"); gz=$(gzip -9 -c "$LIB" | wc -c); rawu=$(stat -c %s "$O
   echo "Human readable: stripped $(numfmt --to=iec "$raw"), gzip $(numfmt --to=iec "$gz")"
   echo
   echo '## Dependencies'; echo '```'
-  if [ "$OS" = linux ]; then
+  if [ "$OS" = linux ] || [ "$OS" = android ]; then
     readelf -d "$LIB" | grep NEEDED || true
     if [ "$TARGET" = linux-x86_64 ] || [ "$TARGET" = linux-arm64 ]; then echo; ldd "$LIB" 2>&1 || true; fi
   else
@@ -59,14 +59,14 @@ raw=$(stat -c %s "$LIB"); gz=$(gzip -9 -c "$LIB" | wc -c); rawu=$(stat -c %s "$O
   fi
   echo '```'
   echo; echo '## Exported symbols (not prefixed mpv_)'; echo '```'
-  if [ "$OS" = linux ]; then
+  if [ "$OS" = linux ] || [ "$OS" = android ]; then
     "$NM" -D --defined-only "$LIB" | awk '{print $3}' | grep -v '^mpv_' | grep -vE '^(_init|_fini|_edata|_end|__bss_start)$' || echo "(none)"
   else
     llvm-readobj --coff-exports "$LIB" 2>/dev/null | awk '/Name:/{print $2}' | grep -v '^mpv_' || echo "(none)"
   fi
   echo '```'
   echo
-  if [ "$OS" = linux ]; then
+  if [ "$OS" = linux ] || [ "$OS" = android ]; then
     echo "Exported mpv_ symbols: $("$NM" -D --defined-only "$LIB" 2>/dev/null | grep -c ' mpv_' || true)"
   else
     echo "Exported mpv_ symbols: $(llvm-readobj --coff-exports "$LIB" 2>/dev/null | grep -c 'Name: mpv_' || true)"

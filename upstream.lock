@@ -29,3 +29,16 @@ ZLIB_URL=https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.
 # HWDEC=1 (video profile, x86_64): NVIDIA codec headers, header-only (MIT-style), FFmpeg dlopen()s libcuda/libnvcuvid at runtime.
 NVCODEC_URL=https://github.com/FFmpeg/nv-codec-headers.git
 NVCODEC_TAG=n13.1.15.0
+
+# ---- Android NDK (android-* targets) -------------------------------------
+# Single toolchain: r28c. NDK r28+ links shared objects at 16 KB page size by default;
+# scripts/build.sh also passes an explicit -z max-page-size for that (harmless on r28).
+# r28c carries sysroots for every supported API level (>= 21) of all four 32/64-bit ABIs,
+# so the 32-bit ABIs need no separate sysroot (NDK >= r24 restricts them to API 21 anyway).
+# The zip is not hash-pinned: CI checks its Content-Length and the version CI unpack reads
+# from source.properties instead.
+NDK_VERSION=28.2.13676358            # = r28c
+NDK_SIZE=722261334
+NDK_ZIP="android-ndk-r28c-linux.zip"
+NDK_URL="https://dl.google.com/android/repository/android-ndk-r28c-linux.zip"
+NDK_DEFAULT_API=24                 # minSdk for the 64-bit ABIs built by this repo
