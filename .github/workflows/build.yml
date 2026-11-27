@@ -124,10 +124,11 @@ jobs:
           D="dist/$ID"
           LIB=$(find "$D/lib" -name 'libmpv.so*' -type f | head -1)
           ABI=$([ "${{ matrix.target }}" = android-arm64 ] && echo aarch64 || echo x86_64)
-          ARCH=$($ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -h "$LIB" | awk '/Machine:/{print $2}')
-          # aarch64 -> 183, x86_64 -> 62 (e_machine values)
-          EXPECT=$([ "$ABI" = aarch64 ] && echo 183 || echo 62)
-          [ "$ARCH" = "$EXPECT" ] || { echo "ABI mismatch: e_machine=$ARCH want $EXPECT"; exit 1; }
+          # llvm-readelf -h prints the machine as a string, not a number:
+          #   aarch64 contains "AArch64", x86_64 contains "Advanced Micro Devices X86-64".
+          ARCH=$($ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -h "$LIB" | sed -n 's/.*Machine:[[:space:]]*//p')
+          MATCH=$([ "$ABI" = aarch64 ] && echo "AArch64" || echo "Advanced Micro Devices X86-64")
+          case "$ARCH" in *"$MATCH"*) ;; *) echo "ABI mismatch: e_machine='$ARCH' want *$MATCH*"; exit 1 ;; esac
           echo "OK: e_machine=$ARCH ($ABI)"
           echo "== NEEDED:"
           $ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -d "$LIB" | grep NEEDED | sed 's/^/   /'
