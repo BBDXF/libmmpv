@@ -43,8 +43,12 @@ mark()  { touch "$BUILD/.stamp-$1"; }
 if [ "$PROFILE" = video ] && ! stamp dav1d; then
   log "dav1d"
   rm -rf "$BUILD/dav1d"
+  # 32-bit x86: dav1d's x86 asm emits non-PIC relocations (same issue as FFmpeg above);
+  # disable asm for that ABI only.
+  DAV1D_EXTRA=()
+  [ "$OS" = android ] && [ "$ARCH" = x86 ] && DAV1D_EXTRA+=(-Denable_asm=false)
   meson setup "$BUILD/dav1d" "$SRC_DIR/dav1d" "${MESON_COMMON[@]}" --default-library=static \
-    -Denable_tools=false -Denable_tests=false -Denable_examples=false -Denable_docs=false
+    -Denable_tools=false -Denable_tests=false -Denable_examples=false -Denable_docs=false "${DAV1D_EXTRA[@]}"
   meson install -C "$BUILD/dav1d"; mark dav1d
 fi
 
@@ -114,6 +118,11 @@ if ! stamp "ffmpeg-hw$HWDEC"; then
     . "$ROOT/common/ffmpeg-android.sh"
     FF_ARGS+=("${FF_ANDROID_COMMON[@]}")
     [ "$PROFILE" = video ] && FF_ARGS+=("${FF_ANDROID_VIDEO[@]}")
+    # 32-bit x86: FFmpeg's --enable-pic does not reliably propagate -DPIC to its yasm/nasm
+    # inline assembly when cross-compiling with the NDK clang, so the resulting .asm objects
+    # emit R_386_32 (non-PIC) relocations that lld rejects when linking libmpv.so. Disable asm
+    # for this ABI (negligible cost for our minimal decoder set); it stays on for every other ABI.
+    [ "$ARCH" = x86 ] && FF_ARGS+=(--disable-asm)
   elif [ "$PROFILE" = video ] && [ "$HWDEC" = 1 ]; then
     . "$ROOT/video/ffmpeg-hwdec.sh"
     FF_ARGS+=("${FF_HW_COMMON[@]}")
