@@ -41,4 +41,4 @@ NDK_VERSION=28.2.13676358            # = r28c
 NDK_SIZE=722261334
 NDK_ZIP="android-ndk-r28c-linux.zip"
 NDK_URL="https://dl.google.com/android/repository/android-ndk-r28c-linux.zip"
-NDK_DEFAULT_API=24                 # minSdk for the 64-bit ABIs built by this repo
+NDK_DEFAULT_API=24                 # minSdk for all ABIs built by this repo (valid for 32-bit in NDK r24+)

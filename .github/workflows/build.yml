@@ -37,9 +37,9 @@ jobs:
           import json, os
           arm = os.environ.get("PRIVATE") != "true" or os.environ.get("ENABLE_ARM64") == "1"
           targets = {"linux-x86_64": "ubuntu-latest", "win-x86_64": "ubuntu-latest", "win-arm64": "ubuntu-latest"}
-          # Android: two 64-bit ABIs (arm64-v8a, x86_64). Cross-compiled on ubuntu with the NDK;
-          # no emulator, so only build/ELF checks (no runtime). armeabi-v7a/x86 32-bit deferred.
-          android = {"android-arm64": "ubuntu-latest", "android-x86_64": "ubuntu-latest"}
+          # Android: four ABIs (arm64-v8a, x86_64, armeabi-v7a, x86). Cross-compiled on ubuntu with
+          # the NDK; no emulator, so only build/ELF checks (no runtime).
+          android = {"android-arm64": "ubuntu-latest", "android-x86_64": "ubuntu-latest", "android-armv7": "ubuntu-latest", "android-x86": "ubuntu-latest"}
           if arm: targets["linux-arm64"] = "ubuntu-24.04-arm"
           inc = [{"profile": p, "target": t, "runner": r, "network": "0"} for p in ("music", "video") for t, r in targets.items()]
           inc += [{"profile": p, "target": t, "runner": r, "network": "0"} for p in ("music", "video") for t, r in android.items()]
@@ -91,7 +91,11 @@ jobs:
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK=$RUNNER_TEMP/android-ndk-r28c" >> "$GITHUB_ENV"
           # check the toolchain clang wrappers exist (catches a bad/unpacked NDK early)
-          ls "$RUNNER_TEMP/android-ndk-r28c/toolchains/llvm/prebuilt"/*/bin/aarch64-linux-android24-clang >/dev/null
+          CT=$([ "${{ matrix.target }}" = android-arm64 ] && echo aarch64-linux-android || \
+                [ "${{ matrix.target }}" = android-x86_64 ] && echo x86_64-linux-android || \
+                [ "${{ matrix.target }}" = android-armv7 ] && echo armv7a-linux-androideabi || \
+                echo i686-linux-android)
+          ls "$RUNNER_TEMP/android-ndk-r28c/toolchains/llvm/prebuilt"/*/bin/${CT}24-clang >/dev/null
           echo "NDK ready"
 
       - uses: actions/cache@v4
@@ -123,11 +127,16 @@ jobs:
           . ./upstream.lock
           D="dist/$ID"
           LIB=$(find "$D/lib" -name 'libmpv.so*' -type f | head -1)
-          ABI=$([ "${{ matrix.target }}" = android-arm64 ] && echo aarch64 || echo x86_64)
           # llvm-readelf -h prints the machine as a string, not a number:
-          #   aarch64 contains "AArch64", x86_64 contains "Advanced Micro Devices X86-64".
+          #   aarch64 -> "AArch64", x86_64 -> "Advanced Micro Devices X86-64",
+          #   armv7  -> "ARM", x86 -> "Intel 80386".
           ARCH=$($ANDROID_NDK/toolchains/llvm/prebuilt/*/bin/llvm-readelf -h "$LIB" | sed -n 's/.*Machine:[[:space:]]*//p')
-          MATCH=$([ "$ABI" = aarch64 ] && echo "AArch64" || echo "Advanced Micro Devices X86-64")
+          case "${{ matrix.target }}" in
+            android-arm64)  ABI=aarch64;  MATCH="AArch64" ;;
+            android-x86_64) ABI=x86_64;   MATCH="Advanced Micro Devices X86-64" ;;
+            android-armv7)  ABI=armv7;    MATCH="ARM" ;;
+            android-x86)    ABI=x86;      MATCH="Intel 80386" ;;
+          esac
           case "$ARCH" in *"$MATCH"*) ;; *) echo "ABI mismatch: e_machine='$ARCH' want *$MATCH*"; exit 1 ;; esac
           echo "OK: e_machine=$ARCH ($ABI)"
           echo "== NEEDED:"
