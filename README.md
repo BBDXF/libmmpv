@@ -12,8 +12,9 @@
 （`libmpv.so` / `libmpv-2.dll`），FFmpeg / libplacebo / dav1d / zlib / mbedTLS 静态链入；
 无 Lua / JS / cplayer / libcurl / OSC / console / stats；libass 被替换为空桩（见下文）。
 
-**支持平台**：Linux x86_64、Linux arm64、Windows x86_64、Windows arm64（llvm-mingw 交叉编译）。
-**不在范围内**：Android、macOS、iOS。
+**支持平台**：Linux x86_64、Linux arm64、Windows x86_64、Windows arm64（llvm-mingw 交叉编译）、
+Android arm64-v8a、Android x86_64（NDK r28c 交叉编译；音乐 audiotrack AO / 视频 `vo=mediacodec_embed` + `hwdec=mediacodec`，**无** GL render API）。
+**不在范围内**：armeabi-v7a / x86（32 位，暂缓）、macOS、iOS。
 
 > 本仓库的构建与测试**只在 GitHub Actions 上验证过**；我没有在本地编译过。下面每一条 “已验证” 都注明了 run id。
 
@@ -35,8 +36,11 @@ scripts/build.sh video linux-arm64
 WITH_NETWORK=1 scripts/build.sh music linux-x86_64   # 加 http/https/HLS（mbedTLS）
 # Windows: PATH 里需要 llvm-mingw
 scripts/build.sh video win-x86_64
+# Android: 需要 NDK r28c，ANDROID_NDK 指向其目录（见下方 “Android 构建”）
+scripts/build.sh video android-arm64
+scripts/build.sh music android-x86_64
 ```
-`scripts/build.sh <music|video> <linux-x86_64|linux-arm64|win-x86_64|win-arm64>`；脚本依次 fetch → apply 补丁 →
+`scripts/build.sh <music|video> <linux-x86_64|linux-arm64|win-x86_64|win-arm64|android-arm64|android-x86_64>`；脚本依次 fetch → apply 补丁 →
 构建 zlib / dav1d(video) / mbedTLS(网络) / libplacebo / FFmpeg / mpv → strip → 打包。
 
 ## 使用产物
@@ -128,7 +132,7 @@ video 开启硬解后的增量（相对 run 45812728213，未开硬解）：linu
 
 | 项目 | 状态 |
 |---|---|
-| 9 个构建 job：{music, video} × {linux-x86_64, linux-arm64, win-x86_64, win-arm64} + music 网络构建 | ✅ 全部成功 |
+| 13 个构建 job：{music, video} × {linux-x86_64, linux-arm64, win-x86_64, win-arm64, android-arm64, android-x86_64} + music 网络构建 | ✅ 全部成功 |
 | Linux x86_64 / arm64 冒烟测试（music、video）：用 ao=null 解码 mp3 / flac / ogg / opus / wav / m4a / alac / aac / mka；内嵌 PNG/JPEG 封面；音频文件不应有视频轨 | ✅ 0 hard / 0 soft failure |
 | video 解码 h264 / hevc / vp9 / av1，并用软件渲染 API 渲染出 50 帧非黑画面 | ✅ Windows x64 / arm64 实机（run 45812728213 日志）；Linux x86_64、arm64 的 50 帧输出见 run 45804606058 日志，之后各 run（含 45829808951）的 Linux 冒烟步骤均成功但我没有逐条重读 |
 | **Windows x86_64 实机（Windows Server 2025）**：加载 `libmpv-2.dll`、`mpv_create`/`mpv_initialize`、解码测试、video 的 SW 渲染 | ✅ music、video 均通过（早先的失败是因为 DLL 导入了 `libc++.dll`，已改为静态链接） |
@@ -136,7 +140,8 @@ video 开启硬解后的增量（相对 run 45812728213，未开硬解）：linu
 | 自定义 header（全局 node 数组）→ 普通文件 / HLS 播放列表 / 分片 / AES key | ✅ |
 | 单 URL `loadfile … http-header-fields-append` | ✅（HLS 播放列表和分片；key 未检查） |
 | 导出符号只有 `mpv_*`（54 个） | ✅ Linux 与 Windows |
-| upstream-watch（手动一次，run 45807674933） | ✅ 补丁可 apply 到 mpv master；**未验证能编译** |
+| **Android** 交叉编译（music/video × arm64-v8a/x86_64）：ELF ABI、NEEDED 白名单、16 KB `PT_LOAD` 对齐、`GNU_RELRO`、`JNI_OnLoad` 导出 | ✅ 见 `build` workflow 的 “Verify Android ELF” 步骤 |
+| **Android 真机播放**（audiotrack 出音、mediacodec_embed 渲 Surface、`wid` 传 Surface） | ❌ **未测试**（CI 无模拟器/真机，须使用者在设备上验证） || upstream-watch（手动一次，run 45807674933） | ✅ 补丁可 apply 到 mpv master；**未验证能编译** |
 | **HTTPS / 自定义 CA / mbedTLS 握手** | ❌ **未测试** |
 | 硬解 hwaccel **编译进去**（`hwdec=help` 列出 d3d11va-copy/dxva2-copy/nvdec-copy/vaapi-copy 及对应直通方式） | ✅ 各平台 video 构建（run 45829808951 日志） |
 | 无 GPU 机器上 `hwdec=auto-copy` 与显式 `*-copy` 的回退播放（4 种编码播完、`hwdec-current=no`、`Could not create device`） | ✅ Linux 与 Windows（run 45829808951 日志） |
@@ -151,6 +156,46 @@ video 开启硬解后的增量（相对 run 45812728213，未开硬解）：linu
 
 说明：`windows-latest` 的 x64 runner 上，`api-ms-win-*` DLL 在 System32 里不是真实文件（API set），诊断输出里显示 False 是正常的。
 linux-arm64 job 在私有仓库也跑起来了（仓库现已公开）。
+
+## Android 构建与使用
+Android 目标（`android-arm64` / `android-x86_64`）由 CI 交叉编译并校验 ELF，但**不做运行时测试**（CI 无模拟器/真机；真机验证是使用者的工作）。
+
+### 构建
+需要 **NDK r28c**（`28.2.13676358`），`ANDROID_NDK` 指向解包后的目录：
+```bash
+export ANDROID_NDK=/path/to/android-ndk-r28c
+scripts/build.sh music android-arm64
+scripts/build.sh video android-x86_64
+```
+产物与桌面相同：`dist/libmmpv-<profile>-android-<abi>[-net].tar.gz`，内含 `lib/libmpv.so*`、`include/mpv/client.h`（Android video 无 `render.h`）、`SIZES.md`、`LICENSES/`。
+ABI：arm64-v8a、x86_64（64 位）。NDK r28+ 默认按 **16 KB 页** 链接共享库，满足 Google Play 2027 年起的 16 KB 对齐要求；CI 校验每个 `PT_LOAD` 的 `Align == 0x4000`。
+
+### 音乐（audiotrack）
+JavaVM 由 `JNI_OnLoad` 注册（补丁 `common/patches/mpv/0003-jni-onload.patch`：调用 `av_jni_set_java_vm`）。宿主 App `System.loadLibrary("mpv")`
+后，Android 运行时会回调 `JNI_OnLoad`，audiotrack AO 即能取到 JavaVM。
+```java
+System.loadLibrary("mpv");            // 触发 JNI_OnLoad 注册 JavaVM
+mpv_create();
+mpv_set_option(h, "ao", "audiotrack");
+mpv_initialize();
+mpv_command(h, new String[]{"loadfile", url, null});
+```
+
+### 视频（mediacodec_embed，无 GL render API）
+Android video 不构建 `render.h` / OpenGL；视频直接渲到宿主传入的 `android.view.Surface`。把 Surface 对象按其地址（`intptr_t`）传给 `--wid`，
+配合 `--vo=mediacodec_embed --hwdec=mediacodec`：
+```java
+System.loadLibrary("mpv");
+mpv_create();
+mpv_set_option(h, "vo",    "mediacodec_embed");
+mpv_set_option(h, "hwdec", "mediacodec");
+mpv_set_option(h, "wid",   "<Surface 的 intptr_t 地址，见下方说明>");
+mpv_initialize();
+mpv_command(h, new String[]{"loadfile", url, null});
+```
+把 `android.view.Surface` 对象的地址按 `intptr_t` 传给 `--wid`（在你的 JNI 桥接层里从 C 侧拿
+`env->NewGlobalRef(surface)` 的句柄换算成地址；`ANativeWindow_fromSurface` 用同一个句柄取原生窗口）。
+> 真机验证由使用者完成：CI 只校验 ABI、NEEDED、16 KB 对齐、RELRO、`JNI_OnLoad` 导出。
 
 ## 已知限制
 - music 不能解码视频；video 的硬解只支持拷回内存的 `-copy` 方式、未在真 GPU 上验证；两者都没有文本字幕/OSD 文字。

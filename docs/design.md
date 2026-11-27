@@ -7,7 +7,8 @@
 | 目标 | 音乐播放器 | 视频播放器 |
 | FFmpeg | 音频解码/解复用 + 封面图(mjpeg/png) | music + h264/hevc/vp8/vp9/av1(dav1d) 软解 |
 | mpv 视频输出 | 无 GL | libmpv render API: OpenGL(由宿主提供上下文) + SW |
-| 硬件解码 | 无 | `-copy` way：d3d11va/dxva2(Win)、nvdec(x86_64)、vaapi(Linux) |
+| 硬件解码 | 无 | `-copy` way：d3d11va/dxva2(Win)、nvdec(x86_64)、vaapi(Linux)；**Android** 用 MediaCodec 直通（`hwdec=mediacodec` + `vo=mediacodec_embed`） |
+| Android 输出 | audiotrack AO | `vo=mediacodec_embed` 渲到宿主 Surface（无 GL render API） |
 
 ## 共同约束
 - LGPL：FFmpeg `--disable-gpl --disable-nonfree`，mpv `-Dgpl=false`。网络构建额外 `--enable-version3`（mbedTLS 为 Apache-2.0）。
