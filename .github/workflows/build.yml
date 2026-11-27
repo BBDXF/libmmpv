@@ -91,10 +91,12 @@ jobs:
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK=$RUNNER_TEMP/android-ndk-r28c" >> "$GITHUB_ENV"
           # check the toolchain clang wrappers exist (catches a bad/unpacked NDK early)
-          CT=$([ "${{ matrix.target }}" = android-arm64 ] && echo aarch64-linux-android || \
-                [ "${{ matrix.target }}" = android-x86_64 ] && echo x86_64-linux-android || \
-                [ "${{ matrix.target }}" = android-armv7 ] && echo armv7a-linux-androideabi || \
-                echo i686-linux-android)
+          case "${{ matrix.target }}" in
+            android-arm64)  CT=aarch64-linux-android ;;
+            android-x86_64) CT=x86_64-linux-android ;;
+            android-armv7)  CT=armv7a-linux-androideabi ;;
+            android-x86)    CT=i686-linux-android ;;
+          esac
           ls "$RUNNER_TEMP/android-ndk-r28c/toolchains/llvm/prebuilt"/*/bin/${CT}24-clang >/dev/null
           echo "NDK ready"
 
