@@ -93,26 +93,44 @@ mpv 0.42 的 `meson.build` 无条件依赖 libass、libplacebo、libswscale、li
   **后果：文本字幕（srt/ass/vtt）和 OSD 文字不会被渲染。** 位图字幕未测试。
 - libplacebo 保留，但构建为没有任何 GPU 后端的静态库（`common/libplacebo.options`）。
 - 不带 zlib 时 FFmpeg 的 png 解码器不可用（嵌入 PNG 封面无法解码），所以 build.sh 自己编译了一个 zlib（CI run 45809092040 暴露、45810046253 起通过）。
-- 硬件解码在 v1 **关闭**。
 - “无滤镜”只是运行时约束：mpv 没有构建开关，内部自动滤镜仍在，`af`/`vf` 选项也仍然存在，由使用方不去设置。
 
-## 体积（CI 实测，run 45812728213；详见 [docs/size-budget.md](docs/size-budget.md)）
+## 硬件解码（video profile）
+只做 mpv 原生支持的 `-copy`（硬解后拷回内存）路径，**不做零拷贝**：后者需要 ANGLE/EGL 等，与本项目精简目标冲突。配置改动之外只有 6 行 mpv `meson.build` 补丁
+（`common/patches/mpv/0002-d3d-hwaccel-without-d3d11.patch`：在不开 `d3d11` 时让 `d3d-hwaccel` 能编译），无其他 mpv 源码改动。
+
+由 `HWDEC=1`（默认，video 有效；`HWDEC=0` 关闭）控制，LGPL 不变。CI run **45829808951** 已验证下面这些 hwaccel 出现在 `hwdec=help` 列出的可用方法里（h264/hevc/vp9/av1 基本都有，DXVA2 无 av1）：
+
+| 平台 | 方式 | 加载 | 备注 |
+|---|---|---|---|
+| Windows x86_64 / arm64 | `d3d11va-copy`、`dxva2-copy` | 运行时 `LoadLibrary`（导入表无 d3d/dxgi/dxva2） | 用 mpv `-Dd3d-hwaccel=enabled -Dd3d9-hwaccel=enabled`，不引入 shaderc/spirv-cross |
+| Windows x86_64 / Linux x86_64 | `nvdec-copy` | 运行时 dlopen `libcuda`/`libnvcuvid` | 仅需 nv-codec-headers 头文件；CI 日志出现 `Cannot load libcuda.so.1` 且回退正常 |
+| Linux x86_64 / arm64 | `vaapi-copy` | **链接时依赖** `libva.so.2`、`libva-drm.so.2` | 未做 Implib.so 运行时加载；没有 libva 的系统上库无法加载 |
+
+- **默认行为**：libmpv 默认 `hwdec=no`，需要宿主显式设置 `hwdec=auto-copy`；`auto-copy` 只选安全的拷回方式。更广的覆盖可看 `hwdec-codecs`。
+- **CI 能证明的**：带 hwaccel 的库能构建/加载；`hwdec=auto-copy` 及显式 `*-copy` 下 h264/hevc/vp9/av1 测试片段都靠软解回退播完，`hwdec-current` 为 `no`（runner 没有 GPU）。日志里能看到 `Could not create device` 后回退。
+- **CI 不能证明的**：真实硬件上是否真的硬解、性能/画质。`hwdec-current` 变为具体方法名才算启用。请在真机上这样验证：
+  `mpv --hwdec=auto-copy --msg-level=vd=v <视频>`，播放中读 `hwdec-current` 属性，或用 API `mpv_get_property(..., "hwdec-current", ...)`。
+- AV1 硬解需要 FFmpeg 原生 `av1` 解码器（仅 hwaccel 用）；它排在 libdav1d 之后，**软解 AV1 仍走 dav1d**（读源码结论，run 45829808951 的软解测试通过）。
+
+## 体积（CI 实测，run 45829808951；详见 [docs/size-budget.md](docs/size-budget.md)）
 | profile | linux-x86_64 | linux-arm64 | win-x86_64 | win-arm64 |
 |---|---|---|---|---|
 | music（strip / gzip，字节） | 6,307,376 / 2,623,274 | 5,597,376 / 2,461,279 | 6,221,312 / 2,742,720 | 5,223,936 / 2,531,469 |
-| video（strip / gzip，字节） | 17,198,576 / 6,873,103 | 11,758,064 / 5,323,231 | 15,066,624 / 5,813,410 | 10,216,448 / 4,771,948 |
+| video + HWDEC（strip / gzip，字节） | 17,440,656 / 6,984,591 | 11,889,616 / 5,396,506 | 15,229,952 / 5,886,489 | 10,301,440 / 4,817,515 |
 
 `WITH_NETWORK=1` 的 music linux-x86_64：7,086,064 / 2,999,019（+778,688 / +375,745）。
+video 开启硬解后的增量（相对 run 45812728213，未开硬解）：linux-x86_64 +242,080 B stripped，linux-arm64 +131,552 B，win-x86_64 +163,328 B，win-arm64 +84,992 B。
 这些都**大于**项目最初估算（music 3–6 MB、video 10–18 MB 的上沿或之上）；原因分析见 size-budget，其中未归因的部分已标明。
 
 ## CI 覆盖：已验证 / 未验证
-全部来自 run **45812728213**（除非另注）。
+除另注外，来自 run **45829808951**（最新全绿 run；硬解已开启）。
 
 | 项目 | 状态 |
 |---|---|
 | 9 个构建 job：{music, video} × {linux-x86_64, linux-arm64, win-x86_64, win-arm64} + music 网络构建 | ✅ 全部成功 |
 | Linux x86_64 / arm64 冒烟测试（music、video）：用 ao=null 解码 mp3 / flac / ogg / opus / wav / m4a / alac / aac / mka；内嵌 PNG/JPEG 封面；音频文件不应有视频轨 | ✅ 0 hard / 0 soft failure |
-| video 解码 h264 / hevc / vp9 / av1，并用软件渲染 API 渲染出 50 帧非黑画面 | ✅ Windows x64 / arm64 实机（run 45812728213 日志）；Linux x86_64、arm64 的 50 帧输出见 run 45804606058 日志，之后各 run 的 Linux 冒烟步骤均成功但我没有逐条重读 |
+| video 解码 h264 / hevc / vp9 / av1，并用软件渲染 API 渲染出 50 帧非黑画面 | ✅ Windows x64 / arm64 实机（run 45812728213 日志）；Linux x86_64、arm64 的 50 帧输出见 run 45804606058 日志，之后各 run（含 45829808951）的 Linux 冒烟步骤均成功但我没有逐条重读 |
 | **Windows x86_64 实机（Windows Server 2025）**：加载 `libmpv-2.dll`、`mpv_create`/`mpv_initialize`、解码测试、video 的 SW 渲染 | ✅ music、video 均通过（早先的失败是因为 DLL 导入了 `libc++.dll`，已改为静态链接） |
 | **Windows arm64 实机（Windows 11 ARM）**：同上 | ✅ music、video 均通过（该 job 配置为 soft，但实际通过） |
 | 自定义 header（全局 node 数组）→ 普通文件 / HLS 播放列表 / 分片 / AES key | ✅ |
@@ -120,7 +138,10 @@ mpv 0.42 的 `meson.build` 无条件依赖 libass、libplacebo、libswscale、li
 | 导出符号只有 `mpv_*`（54 个） | ✅ Linux 与 Windows |
 | upstream-watch（手动一次，run 45807674933） | ✅ 补丁可 apply 到 mpv master；**未验证能编译** |
 | **HTTPS / 自定义 CA / mbedTLS 握手** | ❌ **未测试** |
-| 硬件解码 | ❌ 关闭，未实现 |
+| 硬解 hwaccel **编译进去**（`hwdec=help` 列出 d3d11va-copy/dxva2-copy/nvdec-copy/vaapi-copy 及对应直通方式） | ✅ 各平台 video 构建（run 45829808951 日志） |
+| 无 GPU 机器上 `hwdec=auto-copy` 与显式 `*-copy` 的回退播放（4 种编码播完、`hwdec-current=no`、`Could not create device`） | ✅ Linux 与 Windows（run 45829808951 日志） |
+| Windows DLL / Linux .so 导入表无 d3d/dxgi/dxva2/nvcuda/libcuda/GL/X11/Wayland；Linux video 新增 `libva.so.2`、`libva-drm.so.2` | ✅ run 45829808951 的 `check-deps.sh` |
+| **真实 GPU 上实际硬解、`hwdec-current` 为具体方法、性能与画质** | ❌ **未测试**（CI runner 无 GPU，须真机验证） |
 | 文本字幕 / OSD 文字 | ❌ 不支持（libass 为桩） |
 | 位图字幕（PGS/DVD） | ❌ 未测试 |
 | `release.yml` | ❌ 从未运行 |
@@ -132,7 +153,8 @@ mpv 0.42 的 `meson.build` 无条件依赖 libass、libplacebo、libswscale、li
 linux-arm64 job 在私有仓库也跑起来了（仓库现已公开）。
 
 ## 已知限制
-- music 不能解码视频；video 没有硬解；两者都没有文本字幕/OSD 文字。
+- music 不能解码视频；video 的硬解只支持拷回内存的 `-copy` 方式、未在真 GPU 上验证；两者都没有文本字幕/OSD 文字。
+- Linux 的 VAAPI 是链接时依赖：没有 `libva`/`libva-drm` 的系统上 video 库无法加载（未做运行时加载）。Windows 的 D3D11VA/DXVA2 与 NVDEC 为运行时加载，不受此限。
 - 没有 zlib 之外的压缩库：bzip2 / lzma 等 MKV/MOV 的少见封装可能不可用（`--disable-autodetect`）。
 - 网络构建没有系统证书回退（见上）。
 - 体积比最初预期大（见 size-budget）。

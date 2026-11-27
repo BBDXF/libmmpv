@@ -1,19 +1,23 @@
 # 体积（CI 实测）
 
-来源：GitHub Actions run **45812728213**（commit 见 `git log`，2026-11-26）。数字取自各 artifact 里的 `SIZES.md`；
-“stripped” 是 `strip --strip-unneeded` 后的库文件字节数，“gzip” 是 `gzip -9` 后的字节数。
+来源：GitHub Actions run **45829808951**（最新全绿 run，video 开启硬解；2026-11-26）。数字取自各 artifact 里的 `SIZES.md`；
+“stripped” 是 `strip --strip-unneeded` 后的库文件字节数，“gzip” 是 `gzip -9` 后的字节数。发布包大小仅在 run 45812728213 读过，未随硬解改动重测。
 
-| profile | 目标 | stripped (B) | gzip -9 (B) | 发布包 (B) |
-|---|---|---|---|---|
-| music | linux-x86_64 | 6,307,376 | 2,623,274 | 2,696,383 (.tar.gz) |
-| music | linux-arm64 | 5,597,376 | 2,461,279 | 2,536,101 |
-| music | win-x86_64 | 6,221,312 | 2,742,720 | 2,837,424 (.zip) |
-| music | win-arm64 | 5,223,936 | 2,531,469 | 2,620,967 |
-| music + `WITH_NETWORK=1` | linux-x86_64 | 7,086,064 | 2,999,019 | 3,092,012 |
-| video | linux-x86_64 | 17,198,576 | 6,873,103 | 6,979,808 |
-| video | linux-arm64 | 11,758,064 | 5,323,231 | 5,412,891 |
-| video | win-x86_64 | 15,066,624 | 5,813,410 | 5,936,172 |
-| video | win-arm64 | 10,216,448 | 4,771,948 | 4,879,568 |
+| profile | 目标 | stripped (B) | gzip -9 (B) |
+|---|---|---|---|
+| music | linux-x86_64 | 6,307,376 | 2,623,274 |
+| music | linux-arm64 | 5,597,376 | 2,461,279 |
+| music | win-x86_64 | 6,221,312 | 2,742,720 |
+| music | win-arm64 | 5,223,936 | 2,531,469 |
+| music + `WITH_NETWORK=1` | linux-x86_64 | 7,086,064 | 2,999,019 |
+| video + HWDEC | linux-x86_64 | 17,440,656 | 6,984,591 |
+| video + HWDEC | linux-arm64 | 11,889,616 | 5,396,506 |
+| video + HWDEC | win-x86_64 | 15,229,952 | 5,886,489 |
+| video + HWDEC | win-arm64 | 10,301,440 | 4,817,515 |
+
+硬解增量（video，run 45829808951 相对 45812728213 未开硬解，均为 stripped）：
+linux-x86_64 +242,080 B；linux-arm64 +131,552 B；win-x86_64 +163,328 B；win-arm64 +84,992 B。
+music 不受 HWDEC 影响，数值未变。
 
 - 网络构建增量（music linux-x86_64）：+778,688 B stripped，+375,745 B gzip（mbedTLS + http/https/tls/hls/mpegts/crypto）。
 - video 相对 music（linux-x86_64）：+10.9 MB stripped（软解 h264/hevc/vp8/vp9 + dav1d + 视频滤镜 + OpenGL/SW render 代码）。
