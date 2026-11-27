@@ -1,6 +1,6 @@
 # Video profile = common + audio + software video decoders. Speed over size.
 # AV1 goes through dav1d (FFmpeg's native av1 decoder is hwaccel-only).
-# Hardware decoding (d3d11va/dxva2/vaapi/...) is intentionally OFF in v1: see docs/design.md.
+# Hardware decode flags live in ffmpeg-hwdec.sh (HWDEC=1 by default).
 FF_PROFILE=(
   "${FF_AUDIO[@]}"
   --enable-libdav1d

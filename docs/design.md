@@ -7,7 +7,7 @@
 | 目标 | 音乐播放器 | 视频播放器 |
 | FFmpeg | 音频解码/解复用 + 封面图(mjpeg/png) | music + h264/hevc/vp8/vp9/av1(dav1d) 软解 |
 | mpv 视频输出 | 无 GL | libmpv render API: OpenGL(由宿主提供上下文) + SW |
-| 硬件解码 | 无 | v1 关闭（见下） |
+| 硬件解码 | 无 | `-copy` way：d3d11va/dxva2(Win)、nvdec(x86_64)、vaapi(Linux) |
 
 ## 共同约束
 - LGPL：FFmpeg `--disable-gpl --disable-nonfree`，mpv `-Dgpl=false`。网络构建额外 `--enable-version3`（mbedTLS 为 Apache-2.0）。
@@ -27,8 +27,8 @@ mpv v0.42.0 的 `meson.build:23-33` 无条件依赖 libavfilter、libswscale、l
 ## 已知限制 / 取舍
 - music 构建不能解码视频；视频文件只播放音轨（mpv 会警告缺少视频解码器）。
 - 文本字幕和 OSD 文字不会渲染（libass 为桩）。位图字幕未验证。
-- 没有 zlib：个别 MKV 头压缩、MOV 压缩 atom、HTTP gzip 不可用（`--disable-autodetect`）。
-- 硬件解码在 v1 关闭：d3d11va/vaapi 需要额外的 GL/EGL/DRM 互操作代码或 shaderc，违背"小"的目标。路线：Windows 用 d3d11va-copy，Linux 用 vaapi-copy。
+- 已编译静态 zlib（FFmpeg PNG 封面解码需要）。bzip2/lzma 等其他压缩未启用。
+- 硬件解码（video，run 45829808951 起）：只做拷回内存的 `-copy` 路径，mpv 源码仅加一处 `meson.build` 补丁（不开 d3d11 也能编译 d3d-hwaccel）。Windows 的 d3d11va/dxva2 和 NVDEC 是运行时加载；Linux 的 VAAPI 是链接时依赖 `libva/libva-drm`。真实 GPU 上的硬解未验证（CI 无 GPU），详见 README「硬件解码」章节。零拷贝不做（要 ANGLE/EGL，违背精简目标）。
 - "无滤镜"：用户不能通过 API 之外设置 `af`/`vf`，但这是**运行时**约束（mpv 无构建开关）。库内部自动滤镜保留。若必须禁止，需要改 `options/options.c`。
 - `-Dgl=enabled -Dplain-gl=enabled` 只编译 libmpv 的 OpenGL render API，不带窗口系统。D3D11 render API 需要 shaderc+spirv-cross，未启用。
 
